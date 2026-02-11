@@ -1138,6 +1138,11 @@ class AdEscrowBot:
         self.application.add_error_handler(self.error_handler)
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+         message = update.effective_message
+        if message is None:
+            logger.warning("/help invoked without an addressable message: update=%s", update)
+            return
+            
         text = (
             "🆘 *Need Help?*\n\n"
             "📌 Please review the Help Guide first.\n"
@@ -1153,7 +1158,7 @@ class AdEscrowBot:
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_text(
+        await message.reply_text(
             text,
             reply_markup=reply_markup,
             parse_mode="Markdown",
