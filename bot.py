@@ -1156,7 +1156,6 @@ class AdEscrowBot:
         await update.message.reply_text(
             text,
             reply_markup=reply_markup,
-            parse_mode="Markdown",
             disable_web_page_preview=True
         )
 
