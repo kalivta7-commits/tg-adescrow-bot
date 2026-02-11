@@ -1416,10 +1416,27 @@ class AdEscrowBot:
             await update.message.reply_text(response, parse_mode='Markdown')
             
         except Exception as e:
-            logger.error(f"Error processing Web App data: {e}", exc_info=True)
-            await update.message.reply_text(
-                "⚠️ *An error occurred*\n\nPlease try again.",
-            )
+            text = (
+            "🆘 *Need Help?*\n\n"
+            "📌 Please review the Help Guide first.\n"
+            "If your issue is not resolved, contact us below.\n\n"
+            "We usually respond quickly."
+        )
+
+        keyboard = [
+            [InlineKeyboardButton("🐦 Twitter", url="https://twitter.com/EJDEVX")],
+            [InlineKeyboardButton("💬 Telegram", url="https://t.me/ejag78")],
+            [InlineKeyboardButton("📧 Email", url="mailto:ejfxprotrade@gmail.com")]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown",
+            disable_web_page_preview=True
+        )
     
     def _handle_campaign_creation(self, data: dict, user_id: int) -> str:
         """Handle campaign creation"""
