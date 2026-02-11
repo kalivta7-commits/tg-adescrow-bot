@@ -1138,27 +1138,36 @@ class AdEscrowBot:
         self.application.add_error_handler(self.error_handler)
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = (
-            "🆘 *Need Help?*\n\n"
-            "📌 Please review the Help Guide first.\n"
-            "If your issue is not resolved, contact us below.\n\n"
-            "We usually respond quickly."
-        )
+    text = (
+        "🆘 *Need Help?*\n\n"
+        "📌 Please review the Help Guide first.\n"
+        "If your issue is not resolved, contact us below.\n\n"
+        "We usually respond quickly."
+    )
 
-        keyboard = [
-            [InlineKeyboardButton("🐦 Twitter", url="https://twitter.com/EJDEVX")],
-            [InlineKeyboardButton("💬 Telegram", url="https://t.me/ejag78")],
-            [InlineKeyboardButton("📧 Email", url="mailto:ejfxprotrade@gmail.com")]
-        ]
+    keyboard = [
+        [InlineKeyboardButton("🐦 Twitter", url="https://twitter.com/EJDEVX")],
+        [InlineKeyboardButton("💬 Telegram", url="https://t.me/ejag78")],
+        [InlineKeyboardButton("📧 Email", url="mailto:ejfxprotrade@gmail.com")]
+    ]
 
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
+    if update.message:
         await update.message.reply_text(
             text,
             reply_markup=reply_markup,
             parse_mode="Markdown",
             disable_web_page_preview=True
         )
+    elif update.callback_query:
+        await update.callback_query.message.reply_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown",
+            disable_web_page_preview=True
+        )
+
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
