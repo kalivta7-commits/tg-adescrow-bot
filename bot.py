@@ -1419,7 +1419,6 @@ class AdEscrowBot:
             logger.error(f"Error processing Web App data: {e}", exc_info=True)
             await update.message.reply_text(
                 "⚠️ *An error occurred*\n\nPlease try again.",
-                parse_mode='Markdown'
             )
     
     def _handle_campaign_creation(self, data: dict, user_id: int) -> str:
