@@ -1138,26 +1138,29 @@ class AdEscrowBot:
         self.application.add_error_handler(self.error_handler)
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = (
-            "🆘 *Need Help?*\n\n"
-            "📌 Please review the Help Guide first.\n"
-            "If your issue is not resolved, contact us below.\n\n"
-            "We usually respond quickly."
-        )
 
-        keyboard = [
-            [InlineKeyboardButton("🐦 Twitter", url="https://twitter.com/EJDEVX")],
-            [InlineKeyboardButton("💬 Telegram", url="https://t.me/ejag78")],
-            [InlineKeyboardButton("📧 Email", url="mailto:ejfxprotrade@gmail.com")]
-        ]
+    text = (
+        "🆘 <b>Need Help?</b>\n\n"
+        "📌 Please review the Help Guide first.\n"
+        "If your issue is not resolved, contact us below.\n\n"
+        "We usually respond quickly."
+    )
 
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    keyboard = [
+        [InlineKeyboardButton("🐦 Twitter", url="https://twitter.com/EJDEVX")],
+        [InlineKeyboardButton("💬 Telegram", url="https://t.me/ejag78")],
+        [InlineKeyboardButton("📧 Email", url="mailto:ejfxprotrade@gmail.com")]
+    ]
 
-        await update.message.reply_text(
-            text,
-            reply_markup=reply_markup,
-            disable_web_page_preview=True
-        )
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.effective_chat.send_message(
+        text=text,
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
@@ -1418,7 +1421,7 @@ class AdEscrowBot:
             logger.error(f"Error processing Web App data: {e}", exc_info=True)
             await update.message.reply_text(
                 "⚠️ *An error occurred*\n\nPlease try again.",
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
     
     def _handle_campaign_creation(self, data: dict, user_id: int) -> str:
