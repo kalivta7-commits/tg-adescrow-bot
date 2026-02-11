@@ -1138,35 +1138,35 @@ class AdEscrowBot:
         self.application.add_error_handler(self.error_handler)
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🆘 *Need Help?*\n\n"
-        "📌 Please review the Help Guide first.\n"
-        "If your issue is not resolved, contact us below.\n\n"
-        "We usually respond quickly."
-    )
-
-    keyboard = [
-        [InlineKeyboardButton("🐦 Twitter", url="https://twitter.com/EJDEVX")],
-        [InlineKeyboardButton("💬 Telegram", url="https://t.me/ejag78")],
-        [InlineKeyboardButton("📧 Email", url="mailto:ejfxprotrade@gmail.com")]
-    ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    if update.message:
-        await update.message.reply_text(
-            text,
-            reply_markup=reply_markup,
-            parse_mode="Markdown",
-            disable_web_page_preview=True
+        text = (
+            "🆘 *Need Help?*\n\n"
+            "📌 Please review the Help Guide first.\n"
+            "If your issue is not resolved, contact us below.\n\n"
+            "We usually respond quickly."
         )
-    elif update.callback_query:
-        await update.callback_query.message.reply_text(
-            text,
-            reply_markup=reply_markup,
-            parse_mode="Markdown",
-            disable_web_page_preview=True
-        )
+
+        keyboard = [
+            [InlineKeyboardButton("🐦 Twitter", url="https://twitter.com/EJDEVX")],
+            [InlineKeyboardButton("💬 Telegram", url="https://t.me/ejag78")],
+            [InlineKeyboardButton("📧 Email", url="mailto:ejfxprotrade@gmail.com")]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        if update.message:
+            await update.message.reply_text(
+                text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
+        elif update.callback_query:
+            await update.callback_query.message.reply_text(
+                text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
 
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3061,9 +3061,12 @@ def main():
     # Initialize database
     init_database()
     
-    token = os.getenv("BOT_TOKEN")
+    token = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        raise ValueError("BOT_TOKEN environment variable is required")
+        raise ValueError("BOT_TOKEN (or TELEGRAM_BOT_TOKEN) environment variable is required")
+
+    if os.getenv("RAILWAY_ENVIRONMENT"):
+        logger.info("Railway environment detected")
     
     bot_instance = AdEscrowBot(token)
     
@@ -3071,6 +3074,8 @@ def main():
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask server started")
+
+    logger.info("Bot polling mode enabled (long polling via getUpdates)")
     
     # Start auto-poster scheduler
     if AUTO_POSTER_AVAILABLE:
@@ -3083,5 +3088,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
