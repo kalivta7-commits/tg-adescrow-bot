@@ -1125,17 +1125,17 @@ class AdEscrowBot:
         logger.info(f"Loaded {len(self.channels)} mock channels")
     
     def _setup_handlers(self):
-        """Configure all bot handlers"""
-        self.application.add_handler(CommandHandler("start", self.start))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CallbackQueryHandler(self.help_callback, pattern="^help$"))
-        self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
-        
-        self.application.add_handler(
-            MessageHandler(filters.StatusUpdate.WEB_APP_DATA, self.handle_webapp_data)
-        )
-        
-        self.application.add_error_handler(self.error_handler)
+    self.application.add_handler(CommandHandler("start", self.start))
+    self.application.add_handler(CommandHandler("help", self.help_command))
+    self.application.add_handler(CallbackQueryHandler(self.help_callback, pattern="^help$"))
+    self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
+
+    self.application.add_handler(
+        MessageHandler(filters.StatusUpdate.WEB_APP_DATA, self.handle_webapp_data)
+    )
+
+    self.application.add_error_handler(self.error_handler)
+
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
 
