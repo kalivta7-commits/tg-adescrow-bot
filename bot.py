@@ -1184,31 +1184,129 @@ class AdEscrowBot:
         await query.answer()
 
         help_text = (
-            "📖 *TG AdEscrow – Complete Guide*\n\n"
-            "🚀 *For Advertisers (Buyers)*\n"
-            "1. Open Marketplace\n"
-            "2. Select Channel\n"
-            "3. Create Deal\n"
-            "4. Pay with TON (Escrow)\n"
-            "5. Seller posts ad\n"
-            "6. Funds released after verification\n\n"
-            "📢 *For Channel Owners (Sellers)*\n"
-            "1. Register channel\n"
-            "2. Add bot as admin\n"
-            "3. Set price and category\n"
-            "4. Accept deal\n"
-            "5. Post ad\n"
-            "6. Receive TON after completion\n\n"
-            "🔐 *How Escrow Works*\n"
-            "Buyer pays → Funds locked → Seller posts → Verified → Payment released\n\n"
-            "Deal Status:\n"
-            "🟡 Pending\n"
-            "🔒 Escrow Funded\n"
-            "📢 Live\n"
-            "✅ Completed\n"
-            "❌ Cancelled\n"
-            "⚠ Disputed"
-        )
+    "📖 *TG AdEscrow – Complete User Guide*\n\n"
+
+    "Welcome to TG AdEscrow — a secure marketplace for Telegram advertising using TON escrow protection.\n\n"
+
+    "━━━━━━━━━━━━━━━━━━\n"
+    "🚀 *FOR ADVERTISERS (BUYERS)*\n"
+    "━━━━━━━━━━━━━━━━━━\n\n"
+
+    "🔹 *Step 1 – Open Marketplace*\n"
+    "Tap the 🚀 Open Marketplace button to browse available Telegram channels.\n\n"
+
+    "🔹 *Step 2 – Browse & Filter*\n"
+    "You can filter channels by:\n"
+    "• Category\n"
+    "• Minimum subscribers\n"
+    "• Price\n\n"
+
+    "🔹 *Step 3 – View Channel Details*\n"
+    "Each listing shows:\n"
+    "• Subscriber count\n"
+    "• Price per post\n"
+    "• Category\n"
+    "• Channel description\n\n"
+
+    "🔹 *Step 4 – Create a Deal*\n"
+    "Select a channel and create a deal.\n"
+    "Provide:\n"
+    "• Ad text\n"
+    "• Post duration\n"
+    "• Special instructions (optional)\n\n"
+
+    "🔹 *Step 5 – Pay with TON (Escrow)*\n"
+    "Once confirmed, you pay in TON.\n"
+    "Funds are locked securely in escrow.\n"
+    "The seller CANNOT access funds yet.\n\n"
+
+    "🔹 *Step 6 – Seller Posts Your Ad*\n"
+    "The channel owner must publish your ad exactly as agreed.\n"
+    "The post must remain live for the agreed duration.\n\n"
+
+    "🔹 *Step 7 – Verification*\n"
+    "The bot verifies the post.\n"
+    "If valid → deal moves to completion.\n\n"
+
+    "🔹 *Step 8 – Payment Release*\n"
+    "After successful verification, escrow releases TON to the seller.\n"
+    "Deal marked as ✅ Completed.\n\n"
+
+    "━━━━━━━━━━━━━━━━━━\n"
+    "📢 *FOR CHANNEL OWNERS (SELLERS)*\n"
+    "━━━━━━━━━━━━━━━━━━\n\n"
+
+    "🔹 *Step 1 – Register Your Channel*\n"
+    "Open Mini App and click Add Channel.\n"
+    "You must be an admin of the channel.\n\n"
+
+    "🔹 *Step 2 – Add Bot as Admin*\n"
+    "To enable verification, add the bot as admin in your channel.\n\n"
+
+    "🔹 *Step 3 – Set Pricing & Details*\n"
+    "Define:\n"
+    "• Category\n"
+    "• Price per post\n"
+    "• Minimum duration\n"
+    "• Channel description\n\n"
+
+    "🔹 *Step 4 – Receive Deal Requests*\n"
+    "When an advertiser creates a deal, you’ll be notified.\n"
+    "You can Accept or Reject.\n\n"
+
+    "🔹 *Step 5 – Post the Advertisement*\n"
+    "After escrow is funded, post the ad exactly as provided.\n"
+    "Keep it live for the agreed duration.\n\n"
+
+    "🔹 *Step 6 – Receive Payment*\n"
+    "Once verified, TON is automatically released to your wallet.\n\n"
+
+    "━━━━━━━━━━━━━━━━━━\n"
+    "🔐 *HOW ESCROW WORKS*\n"
+    "━━━━━━━━━━━━━━━━━━\n\n"
+
+    "1️⃣ Buyer pays TON\n"
+    "2️⃣ Funds locked in escrow\n"
+    "3️⃣ Seller posts advertisement\n"
+    "4️⃣ Bot verifies post\n"
+    "5️⃣ Funds released automatically\n\n"
+
+    "No middleman. No manual trust required.\n\n"
+
+    "━━━━━━━━━━━━━━━━━━\n"
+    "⚖️ DISPUTE SYSTEM\n"
+    "━━━━━━━━━━━━━━━━━━\n\n"
+
+    "If:\n"
+    "• Ad not posted\n"
+    "• Ad removed early\n"
+    "• Wrong content posted\n\n"
+    "Buyer may raise a dispute.\n"
+    "Funds remain locked until resolution.\n\n"
+
+    "━━━━━━━━━━━━━━━━━━\n"
+    "📊 DEAL STATUS MEANINGS\n"
+    "━━━━━━━━━━━━━━━━━━\n\n"
+
+    "🟡 Pending – Waiting for seller action\n"
+    "🔒 Escrow Funded – Payment locked securely\n"
+    "📢 Live – Advertisement currently active\n"
+    "✅ Completed – Payment released\n"
+    "❌ Cancelled – Deal cancelled\n"
+    "⚠ Disputed – Under review\n\n"
+
+    "━━━━━━━━━━━━━━━━━━\n"
+    "🌟 WHY USE TG AdEscrow?\n"
+    "━━━━━━━━━━━━━━━━━━\n\n"
+
+    "• Secure TON escrow protection\n"
+    "• Verified channel listings\n"
+    "• Transparent pricing\n"
+    "• Automated deal tracking\n"
+    "• Designed specifically for Telegram\n\n"
+
+    "Safe • Transparent • Automated"
+)
         
         webapp_url = os.getenv("WEBAPP_URL")
         
