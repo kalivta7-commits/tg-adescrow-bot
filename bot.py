@@ -1418,7 +1418,7 @@ class AdEscrowBot:
         except Exception as e:
             logger.error(f"Error processing Web App data: {e}", exc_info=True)
             await update.message.reply_text(
-                "⚠️ *An error occurred*\n\nPlease try again.",
+                "⚠️ *An etyrror occurred*\n\nPlease try again.",
                 parse_mode='Markdown'
             )
     
