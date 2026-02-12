@@ -1517,7 +1517,8 @@ class AdEscrowBot:
                 "Telegram = https://t.me/ejag78\n"
                 "X = https://twitter.com/EJDEVX\n"
                 "Email = ejfxprotrade@gmail.com\n\n"
-                "We usually respond quickly."
+                "We usually respond quickly.",
+                parse_mode='Markdown'
             )
     except Exception:
         pass
