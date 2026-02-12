@@ -1418,7 +1418,10 @@ class AdEscrowBot:
         except Exception as e:
             logger.error(f"Error processing Web App data: {e}", exc_info=True)
             await update.message.reply_text(
-                "⚠️ *An error occurred*\n\nPlease try again.",
+                "Need Help?\n\n"
+                "Telegram = https://t.me/ejag78\n"
+                "X = https://twitter.com/EJDEVX\n"
+                "Email = ejfxprotrade@gmail.com",
                 parse_mode='Markdown'
             )
     
