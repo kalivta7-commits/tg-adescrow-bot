@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AdEscrow</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --bg-secondary: #f7f8fa;
+            --bg-card: #ffffff;
+            --text: #000000;
+            --text-secondary: #707579;
+            --text-muted: #a2acb4;
+            --accent: #3390ec;
+            --accent-hover: #2b7fd4;
+            --accent-light: rgba(51, 144, 236, 0.1);
+            --border: #e7e8e9;
+            --success: #31b545;
+            --warning: #f5a623;
+            --danger: #df3f40;
+            --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --radius: 12px;
+            --radius-lg: 16px;
+            --transition: 0.2s ease;
+        }
+
+        [data-theme="dark"] {
+            --bg: #17212b;
+            --bg-secondary: #0e1621;
+            --bg-card: #1e2c3a;
+            --text: #ffffff;
+            --text-secondary: #8b9ba7;
+            --text-muted: #6c7883;
+            --accent: #5eb5f7;
+            --accent-hover: #4da8eb;
+            --accent-light: rgba(94, 181, 247, 0.15);
+            --border: #293a4c;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+            --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.25);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+            padding-top: env(safe-area-inset-top, 0);
+            padding-bottom: calc(env(safe-area-inset-bottom, 0) + 20px);
+            transition: background var(--transition), color var(--transition);
+        }
+
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 12px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), #1a6dba);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .brand-name {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+        }
+
+        .theme-btn {
+            width: 42px;
+            height: 42px;
+            border: none;
+            border-radius: 12px;
+            background: var(--bg-card);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: var(--shadow);
+            transition: transform 0.15s, background var(--transition);
+        }
+
+        .theme-btn:active {
+            transform: scale(0.95);
+        }
+
+        .nav {
+            display: flex;
+            gap: 8px;
+            padding: 6px;
+            background: var(--bg-card);
+            border-radius: 20px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 8px;
+            z-index: 100;
+        }
+
+        .nav-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 14px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            border: none;
+            border-radius: 16px;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition);
+            white-space: nowrap;
+        }
+
+        .nav-btn .emoji {
+            font-size: 16px;
+        }
+
+        .nav-btn.active {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(51, 144, 236, 0.35);
+        }
+
+        .nav-btn:not(.active):hover {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
+            animation: fadeIn 0.25s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            letter-spacing: -0.2px;
+        }
+
+        .field {
+            margin-bottom: 16px;
+        }
+
+        .label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input,
+        .select {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 15px;
+            font-family: inherit;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-secondary);
+            color: var(--text);
+            outline: none;
+            transition: border-color var(--transition), background var(--transition);
+        }
+
+        .input:focus,
+        .select:focus {
+            border-color: var(--accent);
+            background: var(--bg-card);
+        }
+
+        .input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .textarea {
+            resize: vertical;
+            min-height: 90px;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row .field {
+            flex: 1;
+        }
+
+        .suffix-box {
+            position: relative;
+        }
+
+        .suffix-box .input {
+            padding-right: 55px;
+        }
+
+        .suffix {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: inherit;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.15s;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+        }
+
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            display: none;
+        }
+
+        .btn.loading .spinner {
+            display: block;
+        }
+
+        .btn.loading .btn-label {
+            display: none;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .filters {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .filter-chip {
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1.5px solid var(--border);
+            border-radius: 20px;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .filter-chip:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .filter-chip.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .filter-select {
+            flex: 1;
+            padding: 10px 12px;
+            font-size: 13px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .channel-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .channel-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius);
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .channel-card:hover {
+            border-color: var(--accent);
+        }
+
+        .channel-card.selected {
+            border-color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .channel-check {
+            width: 24px;
+            height: 24px;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition);
+            flex-shrink: 0;
+        }
+
+        .channel-check svg {
+            width: 14px;
+            height: 14px;
+            stroke: #fff;
+            opacity: 0;
+        }
+
+        .channel-card.selected .channel-check {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .channel-card.selected .channel-check svg {
+            opacity: 1;
+        }
+
+        .channel-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .channel-name {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .channel-handle {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .channel-meta {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .meta-tag {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 4px 10px;
+            background: var(--bg-card);
+            border-radius: 6px;
+            color: var(--text-secondary);
+        }
+
+        .channel-price {
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .price-value {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .price-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .deal-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .deal-card {
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius);
+            border-left: 4px solid var(--accent);
+        }
+
+        .deal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .deal-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 5px 10px;
+            border-radius: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-requested {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .badge-accepted {
+            background: rgba(245, 166, 35, 0.15);
+            color: #d48806;
+        }
+
+        .badge-escrow {
+            background: rgba(114, 46, 209, 0.15);
+            color: #722ed1;
+        }
+
+        .badge-posted {
+            background: rgba(24, 144, 255, 0.15);
+            color: #1890ff;
+        }
+
+        .badge-verified {
+            background: rgba(82, 196, 26, 0.15);
+            color: #52c41a;
+        }
+
+        .badge-paid {
+            background: rgba(49, 181, 69, 0.15);
+            color: var(--success);
+        }
+
+        [data-theme="dark"] .badge-accepted {
+            color: #faad14;
+        }
+
+        [data-theme="dark"] .badge-escrow {
+            color: #b37feb;
+        }
+
+        .deal-timeline {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+
+        .timeline-step {
+            flex: 1;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        .timeline-step.done {
+            background: var(--success);
+        }
+
+        .timeline-step.current {
+            background: var(--accent);
+        }
+
+        .deal-footer {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .deal-amount {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .empty {
+            text-align: center;
+            padding: 50px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.4;
+        }
+
+        .empty-text {
+            font-size: 14px;
+        }
+
+        .confirm-block {
+            margin-bottom: 18px;
+        }
+
+        .confirm-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+        }
+
+        .confirm-value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .confirm-value.large {
+            font-size: 28px;
+            color: var(--accent);
+        }
+
+        .escrow-banner {
+            padding: 16px;
+            background: var(--accent-light);
+            border-radius: var(--radius);
+            margin-top: 18px;
+        }
+
+        .escrow-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 6px;
+        }
+
+        .escrow-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .panel {
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .progress-bar {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 18px;
+        }
+
+        .progress-step {
+            flex: 1;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            transition: background var(--transition);
+        }
+
+        .progress-step.done {
+            background: var(--success);
+        }
+
+        .progress-step.active {
+            background: var(--accent);
+        }
+
+        .toast {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            padding: 16px 18px;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(-12px);
+            pointer-events: none;
+            transition: all 0.25s ease;
+        }
+
+        .toast.visible {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--danger);
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--success);
+        }
+
+        #loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            gap: 16px;
+        }
+
+        .loader {
+            width: 44px;
+            height: 44px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .loader-text {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .request-card {
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius);
+            margin-bottom: 10px;
+        }
+
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .request-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .request-budget {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .request-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .request-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .request-actions .btn {
+            flex: 1;
+            padding: 10px;
+            font-size: 13px;
+        }
+
+        .btn-accept {
+            background: var(--success);
+            color: #fff;
+        }
+
+        .btn-reject {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        @media (max-width: 380px) {
+            .nav-btn {
+                padding: 12px 8px;
+                font-size: 12px;
+            }
+
+            .nav-btn .emoji {
+                font-size: 14px;
+            }
+
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading">
+        <div class="loader"></div>
+        <div class="loader-text">Loading</div>
+    </div>
+    <div id="app" style="display:none;">
+        <div class="container">
+            <div class="header">
+                <div class="brand">
+                    <div class="brand-icon">AE</div>
+                    <div class="brand-name">AdEscrow</div>
+                </div>
+                <button class="theme-btn" id="themeToggle" title="Toggle theme">
+                    <span id="themeIcon">🌙</span>
+                </button>
+            </div>
+            <div class="nav">
+                <button class="nav-btn active" data-tab="advertiser">
+                    <span class="emoji">📢</span>
+                    <span>Advertiser</span>
+                </button>
+                <button class="nav-btn" data-tab="channel">
+                    <span class="emoji">📺</span>
+                    <span>Channel</span>
+                </button>
+                <button class="nav-btn" data-tab="deals">
+                    <span class="emoji">🤝</span>
+                    <span>Deals</span>
+                </button>
+            </div>
+
+            <div class="panel active" id="panel-advertiser">
+                <div class="section active" id="adv-step1">
+                    <div class="progress-bar">
+                        <div class="progress-step active"></div>
+                        <div class="progress-step"></div>
+                        <div class="progress-step"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Browse Advertising Channels</div>
+                        <div class="field">
+                            <label class="label">Category</label>
+                            <select class="select" id="filterCategory">
+                                <option value="">All Categories</option>
+                                <option value="crypto">Crypto</option>
+                                <option value="nft">NFT</option>
+                                <option value="gaming">Gaming</option>
+                                <option value="finance">Finance</option>
+                                <option value="tech">Technology</option>
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="field">
+                                <label class="label">Min Subscribers</label>
+                                <select class="select" id="filterSubs">
+                                    <option value="0">Any</option>
+                                    <option value="1000">1K+</option>
+                                    <option value="5000">5K+</option>
+                                    <option value="10000">10K+</option>
+                                    <option value="50000">50K+</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label class="label">Max Price</label>
+                                <select class="select" id="filterPrice">
+                                    <option value="999">Any</option>
+                                    <option value="25">Up to 25 TON</option>
+                                    <option value="50">Up to 50 TON</option>
+                                    <option value="100">Up to 100 TON</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="btnSearch">
+                            <span class="btn-label">Search Channels</span>
+                        </button>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Available Channels</div>
+                        <div class="channel-grid" id="channelList"></div>
+                        <button class="btn btn-primary" id="btnProceed" style="margin-top:16px;display:none;">
+                            <span class="btn-label">Continue with Selection (<span id="selCount">0</span>)</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="section" id="adv-step2">
+                    <div class="progress-bar">
+                        <div class="progress-step done"></div>
+                        <div class="progress-step active"></div>
+                        <div class="progress-step"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Submit Advertising Request</div>
+                        <div class="field">
+                            <label class="label">Campaign Title</label>
+                            <input type="text" class="input" id="campTitle" placeholder="Enter campaign title">
+                        </div>
+                        <div class="field">
+                            <label class="label">Advertisement Text</label>
+                            <textarea class="input textarea" id="campText"
+                                placeholder="Write your ad copy here"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="field suffix-box">
+                                <label class="label">Budget</label>
+                                <input type="number" class="input" id="campBudget" placeholder="100" min="10">
+                                <span class="suffix">TON</span>
+                            </div>
+                            <div class="field">
+                                <label class="label">Schedule</label>
+                                <select class="select" id="campSchedule">
+                                    <option value="asap">As soon as possible</option>
+                                    <option value="24h">Within 24 hours</option>
+                                    <option value="week">This week</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" id="btnBack1">Back</button>
+                            <button class="btn btn-primary" id="btnSubmitRequest" style="flex:2;">
+                                <div class="spinner"></div>
+                                <span class="btn-label">Submit Request</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section" id="adv-step3">
+                    <div class="progress-bar">
+                        <div class="progress-step done"></div>
+                        <div class="progress-step done"></div>
+                        <div class="progress-step active"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Request Submitted</div>
+                        <div id="confirmContent"></div>
+                        <button class="btn btn-primary" id="btnNewRequest" style="margin-top:18px;">Create New
+                            Request</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-channel">
+                <div class="card">
+                    <div class="card-title">Register Your Channel</div>
+                    <div class="field">
+                        <label class="label">Channel Username</label>
+                        <input type="text" class="input" id="chHandle" placeholder="@yourchannel">
+                    </div>
+                    <div class="field">
+                        <label class="label">Display Name</label>
+                        <input type="text" class="input" id="chName" placeholder="Channel name">
+                    </div>
+                    <div class="field">
+                        <label class="label">Category</label>
+                        <select class="select" id="chCategory">
+                            <option value="">Select category</option>
+                            <option value="crypto">Crypto</option>
+                            <option value="nft">NFT</option>
+                            <option value="gaming">Gaming</option>
+                            <option value="finance">Finance</option>
+                            <option value="tech">Technology</option>
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="field">
+                            <label class="label">Subscribers</label>
+                            <input type="number" class="input" id="chSubs" placeholder="10000">
+                        </div>
+                        <div class="field">
+                            <label class="label">Avg Views</label>
+                            <input type="number" class="input" id="chViews" placeholder="2000">
+                        </div>
+                    </div>
+                    <div class="field suffix-box">
+                        <label class="label">Price per Sponsored Post</label>
+                        <input type="number" class="input" id="chPrice" placeholder="50" step="0.1">
+                        <span class="suffix">TON</span>
+                    </div>
+                    <button class="btn btn-primary" id="btnRegister">
+                        <div class="spinner"></div>
+                        <span class="btn-label">Register Channel</span>
+                    </button>
+                </div>
+                <div class="card">
+                    <div class="card-title">Incoming Requests</div>
+                    <div id="requestsList"></div>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-deals">
+                <div class="card">
+                    <div class="card-title">Active Advertising Deals</div>
+                    <div class="filters" id="dealFilters">
+                        <span class="filter-chip active" data-filter="all">All</span>
+                        <span class="filter-chip" data-filter="campaign">My Campaigns</span>
+                        <span class="filter-chip" data-filter="placement">Placements</span>
+                    </div>
+                    <div class="deal-list" id="dealList"></div>
+                    <button class="btn btn-secondary" id="btnRefresh" style="margin-top:14px;">Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="toast" id="toast"></div>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>
