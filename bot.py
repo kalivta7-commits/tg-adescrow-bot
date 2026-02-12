@@ -1514,10 +1514,7 @@ class AdEscrowBot:
         logger.error(f"Error: {context.error}", exc_info=context.error)
         try:
             if update and update.effective_message:
-                await update.effective_message.reply_text(
-                    "⚠️ An error occurred. Please try again.",
-                    parse_mode='Markdown'
-                )
+                
         except Exception:
             pass
     
