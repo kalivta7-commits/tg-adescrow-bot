@@ -1518,7 +1518,7 @@ class AdEscrowBot:
                "X = https://twitter.com/EJDEVX\n"
                "Email = ejfxprotrade@gmail.com\n\n"
                "We usually respond quickly.",
-    parse_mode="Markdown"
+    parse_mode="None"
 )
 
     except Exception:
