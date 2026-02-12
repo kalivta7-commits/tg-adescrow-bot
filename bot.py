@@ -1512,12 +1512,7 @@ class AdEscrowBot:
         try:
             if update and update.effective_message:
                 await update.effective_message.reply_text(
-                    "🆘 HELP & SUPPORT\n\n"
-"If you need assistance, you can contact us through any of the following:\n\n"
-"Telegram: https://t.me/ejag78\n"
-"X (Twitter): https://twitter.com/EJDEVX\n"
-"Email: ejfxprotrade@gmail.com\n\n"
-"We usually respond quickly and are happy to help."
+                    "🆘 HELP & SUPPORT\n\nIf you need assistance, you can contact us through any of the following:\n\nTelegram: https://t.me/ejag78\nX (Twitter): https://twitter.com/EJDEVX\nEmail: ejfxprotrade@gmail.com\n\nWe usually respond quickly and are happy to help.",
                     parse_mode='Markdown'
                 )
         except Exception:
