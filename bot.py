@@ -1523,7 +1523,6 @@ We usually respond quickly and are happy to help.",
             if update and update.effective_message:
     await update.effective_message.reply_text(
         "⚠️ An error occurred. Please try again.",
-        parse_mode="Markdown"
     )
         except Exception:
             pass
