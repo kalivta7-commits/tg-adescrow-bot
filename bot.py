@@ -1512,7 +1512,17 @@ class AdEscrowBot:
         try:
             if update and update.effective_message:
                 await update.effective_message.reply_text(
-                    "⚠️ An error occurred. Please try again.",
+                    "🆘 Help & Support
+
+If you need assistance, you can contact us through any of the following:
+
+Telegram: https://t.me/ejag78
+
+X (Twitter): https://twitter.com/EJDEVX
+
+Email: ejfxprotrade@gmail.com
+
+We usually respond quickly and are happy to help.",
                     parse_mode='Markdown'
                 )
         except Exception:
