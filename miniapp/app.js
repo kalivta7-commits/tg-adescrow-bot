@@ -397,7 +397,7 @@
 
         setLoading('btnSubmitRequest', true);
 
-        sendToBot({
+        console.log('submit_request payload', {
             action: 'submit_request',
             campaign: {
                 title: title,
@@ -543,7 +543,7 @@
             setLoading('btnRegister', false);
         });
 
-        sendToBot({ action: 'register_channel', data: data });
+        console.log('register_channel payload', { action: 'register_channel', data: data });
     }
 
     // Clear channel form
@@ -668,15 +668,9 @@
         });
     }
 
-    // Send data to Telegram bot
+    // Debug helper (no-op bot bridge)
     function sendToBot(data) {
-        try {
-            if (State.tg && State.tg.sendData) {
-                State.tg.sendData(JSON.stringify(data));
-            }
-        } catch (e) {
-            console.log('sendToBot error:', e);
-        }
+        console.log('sendToBot disabled; payload:', data);
     }
 
     // Set button loading state
