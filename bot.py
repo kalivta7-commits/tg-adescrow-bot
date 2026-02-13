@@ -1210,7 +1210,7 @@ class AdEscrowBot:
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Show help information"""
-     await update.message.reply_text(self.get_help_guide_text())
+          await update.message.reply_text(self.get_help_guide_text())
 
     def get_help_guide_text(self) -> str:
         """Return complete help guide text"""
@@ -3022,5 +3022,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
