@@ -1,6 +1,62 @@
 (function () {
     'use strict';
 
+    window.addEventListener('error', function (event) {
+        console.error('[GlobalError]', event && event.error ? event.error : event);
+        toast('Something went wrong. Please try again.', 'error');
+        if (event && typeof event.preventDefault === 'function') {
+            event.preventDefault();
+        }
+        return true;
+    });
+
+    window.addEventListener('unhandledrejection', function (event) {
+        console.error('[UnhandledRejection]', event && event.reason ? event.reason : event);
+        toast('Request failed. Please retry.', 'error');
+        if (event && typeof event.preventDefault === 'function') {
+            event.preventDefault();
+        }
+    });
+
+    function safeObj(value) {
+        return value && typeof value === 'object' ? value : {};
+    }
+
+    function safeArray(value) {
+        return Array.isArray(value) ? value : [];
+    }
+
+    function toText(value, fallback) {
+        if (value === null || value === undefined) {
+            return fallback || '';
+        }
+        return String(value);
+    }
+
+
+    function toNumber(value, fallback) {
+        var n = Number(value);
+        return Number.isFinite(n) ? n : (fallback || 0);
+    }
+
+    function esc(str) {
+        var div = document.createElement('div');
+        div.textContent = toText(str, '');
+        return div.innerHTML;
+    }
+
+    function formatNum(n) {
+        var num = toNumber(n, 0);
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        return toText(num);
+    }
+
+    function capitalize(s) {
+        var text = toText(s, '');
+        return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+    }
+
     // Centralized application state
     var State = {
         tg: null,
@@ -165,10 +221,11 @@
     function refreshDeals() {
         apiGet('/api/deals')
             .then(function (res) {
-                if (res.success && res.data) {
+                if (res && res.success === true && Array.isArray(res.data)) {
                     // Create hash to detect changes
                     var newHash = JSON.stringify(res.data.map(function (d) {
-                        return d.id + ':' + d.status;
+                        var deal = safeObj(d);
+                        return toText(deal.id, '0') + ':' + toText(deal.status, 'pending');
                     }));
 
                     if (newHash !== State.lastDealHash) {
@@ -177,6 +234,10 @@
                         renderDeals();
                         console.log('[Polling] Deals updated');
                     }
+                } else {
+                    State.deals = [];
+                    State.lastDealHash = null;
+                    renderDeals();
                 }
             })
             .catch(function (e) {
@@ -196,11 +257,7 @@
     function loadChannels() {
         apiGet('/api/channels')
             .then(function (res) {
-                if (res.success && res.data) {
-                    State.channels = res.data;
-                } else {
-                    State.channels = [];
-                }
+                State.channels = res && res.success === true && Array.isArray(res.data) ? res.data : [];
                 renderChannels();
             })
             .catch(function (e) {
@@ -219,11 +276,12 @@
         // Reload from backend and apply filters
         apiGet('/api/channels')
             .then(function (res) {
-                if (res.success && res.data) {
+                if (res && res.success === true && Array.isArray(res.data)) {
                     State.channels = res.data.filter(function (ch) {
-                        var catMatch = !category || ch.category === category;
-                        var subsMatch = ch.subscribers >= minSubs;
-                        var priceMatch = ch.price <= maxPrice;
+                        var channel = safeObj(ch);
+                        var catMatch = !category || toText(channel.category) === category;
+                        var subsMatch = toNumber(channel.subscribers, 0) >= minSubs;
+                        var priceMatch = toNumber(channel.price, 0) <= maxPrice;
                         return catMatch && subsMatch && priceMatch;
                     });
                 } else {
@@ -242,7 +300,8 @@
     // Render channel list
     function renderChannels() {
         var container = document.getElementById('channelList');
-        var channels = State.channels;
+        if (!container) return;
+        var channels = safeArray(State.channels);
 
         if (!channels.length) {
             container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No channels available</div></div>';
@@ -250,21 +309,29 @@
         }
 
         var html = '';
-        channels.forEach(function (ch) {
-            var isSelected = State.selected.indexOf(ch.id) !== -1;
-            html += '<div class="channel-card' + (isSelected ? ' selected' : '') + '" data-id="' + ch.id + '">' +
+        channels.forEach(function (ch, index) {
+            var channel = safeObj(ch);
+            var channelId = channel.id !== undefined && channel.id !== null ? channel.id : ('idx-' + index);
+            var channelName = toText(channel.name || channel.username || 'Unknown channel');
+            var channelUser = toText(channel.username || '');
+            var channelCategory = capitalize(toText(channel.category || 'general'));
+            var channelSubs = formatNum(toNumber(channel.subscribers, 0));
+            var channelViews = formatNum(toNumber(channel.avg_views, 0));
+            var channelPrice = toNumber(channel.price, 0);
+            var isSelected = State.selected.indexOf(channelId) !== -1;
+            html += '<div class="channel-card' + (isSelected ? ' selected' : '') + '" data-id="' + esc(channelId) + '">' +
                 '<div class="channel-check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>' +
                 '<div class="channel-info">' +
-                '<div class="channel-name">' + esc(ch.name || ch.username) + '</div>' +
-                '<div class="channel-handle">' + esc(ch.username) + '</div>' +
+                '<div class="channel-name">' + esc(channelName) + '</div>' +
+                '<div class="channel-handle">' + esc(channelUser) + '</div>' +
                 '<div class="channel-meta">' +
-                '<span class="meta-tag">' + capitalize(ch.category) + '</span>' +
-                '<span class="meta-tag">' + formatNum(ch.subscribers) + ' subs</span>' +
-                '<span class="meta-tag">' + formatNum(ch.avg_views || 0) + ' views</span>' +
+                '<span class="meta-tag">' + esc(channelCategory) + '</span>' +
+                '<span class="meta-tag">' + esc(channelSubs) + ' subs</span>' +
+                '<span class="meta-tag">' + esc(channelViews) + ' views</span>' +
                 '</div>' +
                 '</div>' +
                 '<div class="channel-price">' +
-                '<div class="price-value">' + ch.price + ' TON</div>' +
+                '<div class="price-value">' + esc(toText(channelPrice)) + ' TON</div>' +
                 '<div class="price-label">per post</div>' +
                 '</div>' +
                 '</div>';
@@ -274,7 +341,12 @@
         // Bind channel selection
         container.querySelectorAll('.channel-card').forEach(function (card) {
             card.addEventListener('click', function () {
-                var id = parseInt(this.dataset.id) || this.dataset.id;
+                var rawId = this.dataset ? this.dataset.id : null;
+                var parsedId = parseInt(rawId, 10);
+                var id = Number.isNaN(parsedId) ? rawId : parsedId;
+                if (id === null || id === undefined || id === '') {
+                    return;
+                }
                 var idx = State.selected.indexOf(id);
                 if (idx === -1) {
                     State.selected.push(id);
@@ -302,10 +374,13 @@
 
     // Submit advertising request
     function submitRequest() {
-        var title = document.getElementById('campTitle').value.trim();
-        var text = document.getElementById('campText').value.trim();
-        var budget = parseFloat(document.getElementById('campBudget').value) || 0;
-        var schedule = document.getElementById('campSchedule').value;
+        var titleEl = document.getElementById('campTitle');
+        var textEl = document.getElementById('campText');
+        var budgetEl = document.getElementById('campBudget');
+
+        var title = toText(titleEl && titleEl.value).trim();
+        var text = toText(textEl && textEl.value).trim();
+        var budget = toNumber(budgetEl && budgetEl.value, 0);
 
         if (!title || title.length < 3) {
             toast('Please enter a valid campaign title', 'error');
@@ -322,30 +397,54 @@
 
         setLoading('btnSubmitRequest', true);
 
+        sendToBot({
+            action: 'submit_request',
+            campaign: {
+                title: title,
+                text: text,
+                budget: budget,
+                channels: safeArray(State.selected)
+            }
+        });
+
         // Create campaign via API
-        apiPost('/api/campaign/create', {
+        return apiPost('/api/campaign/create', {
             user_id: State.user.id,
             title: title,
             text: text,
             budget: budget
         }).then(function (res) {
-            if (res.success && res.data) {
-                State.campaign = res.data;
+            if (!(res && res.success === true && res.data && res.data.id)) {
+                throw new Error(res && res.error ? res.error : 'Failed to create campaign');
+            }
 
-                // Create deals for selected channels
-                var dealPromises = State.selected.map(function (channelId) {
-                    var channel = State.channels.find(function (c) { return c.id == channelId; });
-                    return apiPost('/api/deal/create', {
-                        campaign_id: res.data.id,
-                        channel_id: channelId,
-                        escrow_amount: channel ? channel.price : 0,
-                        status: 'pending'
-                    });
+            State.campaign = safeObj(res.data);
+
+            var selected = safeArray(State.selected).filter(function (channelId) {
+                return channelId !== null && channelId !== undefined && channelId !== '';
+            });
+
+            // Create deals for selected channels
+            var dealPromises = selected.map(function (channelId) {
+                var channel = safeArray(State.channels).find(function (c) {
+                    var item = safeObj(c);
+                    return item.id == channelId;
                 });
 
-                return Promise.all(dealPromises);
-            }
-            throw new Error('Failed to create campaign');
+                return apiPost('/api/deal/create', {
+                        campaign_id: State.campaign.id,
+                        channel_id: channelId,
+                        escrow_amount: toNumber(channel && channel.price, 0),
+                        status: 'pending'
+                    }).then(function (dealRes) {
+                        if (!(dealRes && dealRes.success === true && dealRes.data)) {
+                            throw new Error(dealRes && dealRes.error ? dealRes.error : 'Failed to create deal');
+                        }
+                        return dealRes.data;
+                    });
+            });
+
+            return Promise.all(dealPromises);
         }).then(function () {
             showConfirmation();
             toast('Request submitted successfully', 'success');
@@ -354,17 +453,6 @@
             toast('Error submitting request', 'error');
         }).finally(function () {
             setLoading('btnSubmitRequest', false);
-        });
-
-        // Send to Telegram bot
-        sendToBot({
-            action: 'submit_request',
-            campaign: {
-                title: title,
-                text: text,
-                budget: budget,
-                channels: State.selected
-            }
         });
     }
 
@@ -469,11 +557,7 @@
     function loadDeals() {
         apiGet('/api/deals')
             .then(function (res) {
-                if (res.success && res.data) {
-                    State.deals = res.data;
-                } else {
-                    State.deals = [];
-                }
+                State.deals = res && res.success === true && Array.isArray(res.data) ? res.data : [];
                 renderDeals();
             })
             .catch(function (e) {
@@ -619,24 +703,6 @@
         document.getElementById('app').style.display = 'block';
     }
 
-    // Escape HTML
-    function esc(str) {
-        var div = document.createElement('div');
-        div.textContent = str || '';
-        return div.innerHTML;
-    }
-
-    // Format number with K/M suffix
-    function formatNum(n) {
-        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-        return n.toString();
-    }
-
-    // Capitalize first letter
-    function capitalize(s) {
-        return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-    }
 
     // Start application
     document.addEventListener('DOMContentLoaded', function () {
