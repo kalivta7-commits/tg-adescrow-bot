@@ -196,13 +196,12 @@
     function loadChannels() {
         apiGet('/api/channels')
             .then(function (res) {
-                if (res.success && res.channels) {
-                    State.channels = res.channels;
-                    renderChannels();
+                if (res.success && res.data) {
+                    State.channels = res.data;
                 } else {
                     State.channels = [];
-                    renderChannels();
                 }
+                renderChannels();
             })
             .catch(function (e) {
                 console.log('Error loading channels:', e);
@@ -220,8 +219,8 @@
         // Reload from backend and apply filters
         apiGet('/api/channels')
             .then(function (res) {
-                if (res.success && res.channels) {
-                    State.channels = res.channels.filter(function (ch) {
+                if (res.success && res.data) {
+                    State.channels = res.data.filter(function (ch) {
                         var catMatch = !category || ch.category === category;
                         var subsMatch = ch.subscribers >= minSubs;
                         var priceMatch = ch.price <= maxPrice;
@@ -256,12 +255,12 @@
             html += '<div class="channel-card' + (isSelected ? ' selected' : '') + '" data-id="' + ch.id + '">' +
                 '<div class="channel-check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>' +
                 '<div class="channel-info">' +
-                '<div class="channel-name">' + esc(ch.name || ch.handle) + '</div>' +
-                '<div class="channel-handle">' + esc(ch.handle) + '</div>' +
+                '<div class="channel-name">' + esc(ch.name || ch.username) + '</div>' +
+                '<div class="channel-handle">' + esc(ch.username) + '</div>' +
                 '<div class="channel-meta">' +
                 '<span class="meta-tag">' + capitalize(ch.category) + '</span>' +
                 '<span class="meta-tag">' + formatNum(ch.subscribers) + ' subs</span>' +
-                '<span class="meta-tag">' + formatNum(ch.views || 0) + ' views</span>' +
+                '<span class="meta-tag">' + formatNum(ch.avg_views || 0) + ' views</span>' +
                 '</div>' +
                 '</div>' +
                 '<div class="channel-price">' +
