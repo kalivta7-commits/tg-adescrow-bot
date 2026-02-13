@@ -426,7 +426,7 @@
         if (!handle.startsWith('@')) handle = '@' + handle;
         if (!name) { toast('Please enter channel name', 'error'); return; }
         if (!category) { toast('Please select a category', 'error'); return; }
-        if (subs < 100) { toast('Minimum 100 subscribers required', 'error'); return; }
+        if (subs < 1) { toast('Minimum 100 subscribers required', 'error'); return; }
         if (price < 1) { toast('Minimum price is 1 TON', 'error'); return; }
 
         setLoading('btnRegister', true);
