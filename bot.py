@@ -1632,12 +1632,35 @@ def api_auth():
 @rate_limit()
 def api_get_channels():
     try:
+        owner_only = request.args.get('owner_only') == '1'
+        telegram_id = request.args.get('telegram_id') or request.args.get('user_id')
+
+        owner_id = None
+        if owner_only:
+            if not telegram_id:
+                return jsonify({'success': False, 'error': 'telegram_id is required when owner_only=1'}), 400
+            try:
+                owner_id = get_user_id(int(telegram_id))
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'telegram_id must be an integer'}), 400
+
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, owner_id, username, name, category, price, subscribers, avg_views, created_at
-                FROM channels ORDER BY subscribers DESC
-            ''')
+
+            if owner_only:
+                cursor.execute('''
+                    SELECT id, owner_id, username, name, category, price, subscribers, avg_views, created_at
+                    FROM channels
+                    WHERE owner_id = ?
+                    ORDER BY subscribers DESC
+                ''', (owner_id,))
+            else:
+                cursor.execute('''
+                    SELECT id, owner_id, username, name, category, price, subscribers, avg_views, created_at
+                    FROM channels
+                    WHERE verified = 1
+                    ORDER BY subscribers DESC
+                ''')
             rows = cursor.fetchall()
 
             channels = []
@@ -1654,7 +1677,7 @@ def api_get_channels():
                     'created_at': row['created_at']
                 })
 
-            return json_response(True, data={'channels': channels})
+            return jsonify({'success': True, 'data': channels}), 200
 
     except Exception as e:
         logger.error(f"Error getting channels: {e}")
