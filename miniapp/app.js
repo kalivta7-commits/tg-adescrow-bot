@@ -409,7 +409,7 @@
 
         // Create campaign via API
         return apiPost('/api/campaign/create', {
-            user_id: State.user.id,
+            telegram_id: State.user.id,
             title: title,
             text: text,
             budget: budget
@@ -418,7 +418,8 @@
                 throw new Error(res && res.error ? res.error : 'Failed to create campaign');
             }
 
-            State.campaign = safeObj(res.data);
+            var campaignData = safeObj(res.data);
+            State.campaign = campaignData;
 
             var selected = safeArray(State.selected).filter(function (channelId) {
                 return channelId !== null && channelId !== undefined && channelId !== '';
@@ -432,7 +433,7 @@
                 });
 
                 return apiPost('/api/deal/create', {
-                        campaign_id: State.campaign.id,
+                        campaign_id: campaignData.id,
                         channel_id: channelId,
                         escrow_amount: toNumber(channel && channel.price, 0),
                         status: 'pending'
