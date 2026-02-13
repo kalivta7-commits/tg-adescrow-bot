@@ -1789,21 +1789,25 @@ def api_create_deal():
         if not channel_id:
             return jsonify({'success': False, 'error': 'channel_id is required'}), 400
 
-         if not advertiser_id:
+        if not advertiser_id:
             return jsonify({'success': False, 'error': 'advertiser_id is required'}), 400
         if amount <= 0:
             return jsonify({'success': False, 'error': 'amount must be greater than 0'}), 400
         if not memo:
             return jsonify({'success': False, 'error': 'memo is required'}), 400
 
-        supabase.table("deals").insert({
-            "campaign_id": campaign_id,
-            "channel_id": channel_id,
-            "advertiser_id": advertiser_id,
-            "amount": amount,
-            "memo": memo,
-            "status": "waiting_payment"
-        }).execute()
+        try:
+            response = supabase.table("deals").insert({
+                "campaign_id": campaign_id,
+                "channel_id": channel_id,
+                "advertiser_id": advertiser_id,
+                "amount": amount,
+                "memo": memo,
+                "status": "waiting_payment"
+            }).execute()
+            print("Supabase insert OK:", response)
+        except Exception as e:
+            print("Supabase insert ERROR:", str(e))
 
         status = data.get('status', 'waiting_payment')
         
