@@ -165,14 +165,14 @@
     function refreshDeals() {
         apiGet('/api/deals')
             .then(function (res) {
-                if (res.success && res.deals) {
+                if (res.success && res.data) {
                     // Create hash to detect changes
-                    var newHash = JSON.stringify(res.deals.map(function (d) {
+                    var newHash = JSON.stringify(res.data.map(function (d) {
                         return d.id + ':' + d.status;
                     }));
 
                     if (newHash !== State.lastDealHash) {
-                        State.deals = res.deals;
+                        State.deals = res.data;
                         State.lastDealHash = newHash;
                         renderDeals();
                         console.log('[Polling] Deals updated');
@@ -329,14 +329,14 @@
             text: text,
             budget: budget
         }).then(function (res) {
-            if (res.success && res.campaign) {
-                State.campaign = res.campaign;
+            if (res.success && res.data) {
+                State.campaign = res.data;
 
                 // Create deals for selected channels
                 var dealPromises = State.selected.map(function (channelId) {
                     var channel = State.channels.find(function (c) { return c.id == channelId; });
                     return apiPost('/api/deal/create', {
-                        campaign_id: res.campaign.id,
+                        campaign_id: res.data.id,
                         channel_id: channelId,
                         escrow_amount: channel ? channel.price : 0,
                         status: 'pending'
@@ -469,8 +469,8 @@
     function loadDeals() {
         apiGet('/api/deals')
             .then(function (res) {
-                if (res.success && res.deals) {
-                    State.deals = res.deals;
+                if (res.success && res.data) {
+                    State.deals = res.data;
                 } else {
                     State.deals = [];
                 }
