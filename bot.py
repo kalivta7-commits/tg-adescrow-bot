@@ -1210,7 +1210,9 @@ class AdEscrowBot:
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Show help information"""
-        def get_help_guide_text(self) -> str:
+     await update.message.reply_text(self.get_help_guide_text())
+
+    def get_help_guide_text(self) -> str:
         """Return complete help guide text"""
         return (
             "📖 TG AdEscrow – Complete User Guide\n\n"
@@ -1317,8 +1319,6 @@ class AdEscrowBot:
             "X (Twitter): @EJDEVX\n"
             "Email: ejfxprotrade@gmail.com"
         )
-
-      await update.message.reply_text(self.get_help_guide_text())
 
     async def handle_button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle inline keyboard button callbacks"""
