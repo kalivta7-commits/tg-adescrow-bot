@@ -11,6 +11,7 @@ from enum import Enum
 from contextlib import contextmanager
 
 from dotenv import load_dotenv
+from supabase import create_client
 from flask import Flask, request, jsonify, send_from_directory
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
@@ -48,6 +49,11 @@ except ImportError as e:
 
 # Load environment variables
 load_dotenv()
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # Configure logging
 logging.basicConfig(
@@ -1761,7 +1767,6 @@ def api_create_deal_via_deals():
     """Create a deal (POST to /api/deals for backwards compatibility)"""
     return api_create_deal()
 
-
 @flask_app.route('/api/deal/create', methods=['POST'])
 def api_create_deal():
     """Create a new deal"""
@@ -1770,11 +1775,37 @@ def api_create_deal():
         
         campaign_id = data.get('campaign_id')
         channel_id = data.get('channel_id')
-        escrow_amount = float(data.get('escrow_amount', 0))
-        status = data.get('status', 'pending')
-        
+        advertiser_id = data.get('advertiser_id')
+        memo = data.get('memo')
+        amount_raw = data.get('amount', data.get('escrow_amount', 0))
+
+        try:
+            amount = float(amount_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'amount must be a valid number'}), 400
+
+        if not campaign_id:
+            return jsonify({'success': False, 'error': 'campaign_id is required'}), 400
         if not channel_id:
             return jsonify({'success': False, 'error': 'channel_id is required'}), 400
+
+         if not advertiser_id:
+            return jsonify({'success': False, 'error': 'advertiser_id is required'}), 400
+        if amount <= 0:
+            return jsonify({'success': False, 'error': 'amount must be greater than 0'}), 400
+        if not memo:
+            return jsonify({'success': False, 'error': 'memo is required'}), 400
+
+        supabase.table("deals").insert({
+            "campaign_id": campaign_id,
+            "channel_id": channel_id,
+            "advertiser_id": advertiser_id,
+            "amount": amount,
+            "memo": memo,
+            "status": "waiting_payment"
+        }).execute()
+
+        status = data.get('status', 'waiting_payment')
         
         with get_db() as conn:
             cursor = conn.cursor()
@@ -1782,7 +1813,7 @@ def api_create_deal():
             cursor.execute('''
                 INSERT INTO deals (campaign_id, channel_id, status, escrow_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (campaign_id, channel_id, status, escrow_amount))
+           ''', (campaign_id, channel_id, status, amount))
             conn.commit()
             
             deal_id = cursor.lastrowid
@@ -1794,8 +1825,11 @@ def api_create_deal():
                     'id': deal_id,
                     'campaign_id': campaign_id,
                     'channel_id': channel_id,
+                    'advertiser_id': advertiser_id,
+                    'memo': memo,
                     'status': status,
-                    'escrow_amount': escrow_amount
+                    'escrow_amount': amount,
+                    'amount': amount
                 }
             })
             
