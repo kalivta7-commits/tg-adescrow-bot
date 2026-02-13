@@ -50,10 +50,17 @@ except ImportError as e:
 # Load environment variables
 load_dotenv()
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+supabase = None
+if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    except Exception as e:
+        print("Supabase error:", e)
+else:
+    print("Supabase error:", "SUPABASE_URL or SUPABASE_SERVICE_KEY is missing")
 
 # Configure logging
 logging.basicConfig(
@@ -1783,10 +1790,26 @@ def api_create_deal():
             amount = float(amount_raw)
         except (TypeError, ValueError):
             return jsonify({'success': False, 'error': 'amount must be a valid number'}), 400
+            
+        try:
+            campaign_id = int(campaign_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'campaign_id must be a valid integer'}), 400
 
-        if not campaign_id:
+        try:
+            channel_id = int(channel_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'channel_id must be a valid integer'}), 400
+
+        try:
+            advertiser_id = int(advertiser_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'advertiser_id must be a valid integer'}), 400
+
+        if campaign_id <= 0:
             return jsonify({'success': False, 'error': 'campaign_id is required'}), 400
-        if not channel_id:
+            
+        if channel_id <= 0:
             return jsonify({'success': False, 'error': 'channel_id is required'}), 400
 
         if not advertiser_id:
@@ -1797,17 +1820,20 @@ def api_create_deal():
             return jsonify({'success': False, 'error': 'memo is required'}), 400
 
         try:
-            response = supabase.table("deals").insert({
-                "campaign_id": campaign_id,
-                "channel_id": channel_id,
-                "advertiser_id": advertiser_id,
-                "amount": amount,
-                "memo": memo,
-                "status": "waiting_payment"
-            }).execute()
-            print("Supabase insert OK:", response)
+            if supabase:
+                response = supabase.table("deals").insert({
+                    "campaign_id": campaign_id,
+                    "channel_id": channel_id,
+                    "advertiser_id": advertiser_id,
+                    "amount": amount,
+                    "memo": memo,
+                    "status": "waiting_payment"
+                }).execute()
+                print("Supabase insert OK:", response)
+            else:
+                print("Supabase error:", "Supabase client not initialized")
         except Exception as e:
-            print("Supabase insert ERROR:", str(e))
+            print("Supabase error:", e)
 
         status = data.get('status', 'waiting_payment')
         
