@@ -12,7 +12,6 @@ from contextlib import contextmanager
 from functools import wraps
 
 from dotenv import load_dotenv
-from supabase import create_client
 from flask import Flask, request, jsonify, send_from_directory
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
@@ -57,19 +56,7 @@ except ImportError as e:
 
 # Load environment variables
 load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-
-supabase = None
-if SUPABASE_URL and SUPABASE_SERVICE_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    except Exception as e:
-        logger.error("Supabase initialization failed: %s", e)
-        supabase = None
-else:
-    logger.error("SUPABASE_URL or SUPABASE_SERVICE_KEY is missing")
+TOKEN = os.getenv("BOT_TOKEN")
 
 # -----------------------------------------------------------------------------
 # Constants
@@ -89,6 +76,40 @@ async def run_async(coro):
     else:
         # Use existing loop
         return await coro
+
+
+def run_coroutine_safely(coro):
+    """Run coroutine from sync code without event-loop conflicts."""
+    try:
+        return asyncio.run(coro)
+    except RuntimeError:
+        result_box = {'value': None, 'error': None}
+
+        def _runner():
+            try:
+                result_box['value'] = asyncio.run(coro)
+            except Exception as inner_err:
+                result_box['error'] = inner_err
+
+        worker = threading.Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join()
+
+        if result_box['error']:
+            raise result_box['error']
+
+        return result_box['value']
+
+
+def dispatch_background_async(coro, task_name: str = "background-task"):
+    """Execute async call in background thread and never crash request thread."""
+    def _runner():
+        try:
+            run_coroutine_safely(coro)
+        except Exception as async_err:
+            logger.error("Async task %s failed: %s", task_name, async_err, exc_info=True)
+
+    threading.Thread(target=_runner, daemon=True).start()
 
 # -----------------------------------------------------------------------------
 # Rate limiting stub
@@ -541,9 +562,17 @@ async def verify_channel(bot, channel_username: str) -> dict:
     }
 
     try:
+        if not channel_username or not isinstance(channel_username, str):
+            result['error'] = 'Invalid username. Provide a valid public @username.'
+            return result
+
         # Ensure @ prefix
         if not channel_username.startswith('@'):
             channel_username = '@' + channel_username
+
+        if ' ' in channel_username or len(channel_username) < 2:
+            result['error'] = 'Invalid username format. Use a public channel @username.'
+            return result
 
         # Get channel info
         try:
@@ -552,6 +581,10 @@ async def verify_channel(bot, channel_username: str) -> dict:
             error_str = str(e).lower()
             if 'chat not found' in error_str:
                 result['error'] = 'Channel not found. Check the username.'
+            elif 'username is invalid' in error_str or 'invalid' in error_str:
+                result['error'] = 'Invalid username. Check channel handle and try again.'
+            elif 'private' in error_str:
+                result['error'] = 'Private channel is not supported. Use a public channel username.'
             elif 'bot was kicked' in error_str:
                 result['error'] = 'Bot was removed from channel.'
             else:
@@ -597,7 +630,13 @@ async def verify_channel(bot, channel_username: str) -> dict:
                 return result
 
         except Exception as e:
-            result['error'] = f'Cannot verify bot status: {e}'
+            error_str = str(e).lower()
+            if 'bot was kicked' in error_str:
+                result['error'] = 'Bot was kicked from the channel. Add bot back as admin.'
+            elif 'not enough rights' in error_str or 'have no rights' in error_str:
+                result['error'] = 'Bot lacks admin rights in the channel.'
+            else:
+                result['error'] = f'Cannot verify bot status: {e}'
             return result
 
         logger.info(f"Channel verified: {channel_username}, subscribers={result['subscribers']}, can_post={result['bot_can_post']}")
@@ -830,7 +869,8 @@ def transition_deal_state(deal_id: int, new_state: str, actor_telegram_id: int =
         'deal': None,
         'error': None,
         'old_state': None,
-        'new_state': None
+        'new_state': None,
+        'conflict': False
     }
 
     try:
@@ -865,6 +905,7 @@ def transition_deal_state(deal_id: int, new_state: str, actor_telegram_id: int =
             if cursor.rowcount == 0:
                 conn.rollback()
                 result['error'] = 'State changed by another process (concurrent modification)'
+                result['conflict'] = True
                 return result
 
             conn.commit()
@@ -1520,7 +1561,7 @@ def add_cors_headers(response):
     return response
 
 
-bot_instance = None
+bot_instance = AdEscrowBot(TOKEN) if TOKEN else None
 
 
 def json_response(success: bool, data=None, error=None, status=200):
@@ -1626,50 +1667,52 @@ def api_create_channel():
     try:
         data = request.get_json() or {}
 
-        owner_telegram_id = data.get('user_id')  # telegram_id
-        username = data.get('username') or data.get('channel_handle', '')
-        name = data.get('name') or data.get('channel_name', '')
-        category = data.get('category', 'general')
-        price = float(data.get('price') or data.get('price_per_post', 0))
-        subscribers = int(data.get('subscribers', 0))
-        avg_views = int(data.get('avg_views') or data.get('views', 0))
+        telegram_id = data.get('telegram_id') or data.get('user_id')
+        username = data.get('username') or data.get('channel_handle')
 
-        if not username:
-            return json_response(False, error='username is required', status=400)
+        if not telegram_id or not username:
+            return json_response(False, error='telegram_id and username are required', status=400)
 
-        if not username.startswith('@'):
-            username = '@' + username
-
-        # Get or create user
-        if not owner_telegram_id:
-            return json_response(False, error='user_id (telegram_id) is required', status=400)
-
-        user_id = get_user_id(owner_telegram_id)
+        if bot_instance is None or bot_instance.application is None:
+            return json_response(False, error='Bot instance is not initialized', status=503)
 
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO channels (owner_id, username, name, category, price, subscribers, avg_views)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, username, name, category, price, subscribers, avg_views))
-            conn.commit()
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            user = cursor.fetchone()
 
-            channel_id = cursor.lastrowid
-            logger.info(f"API: Created channel {channel_id} - {username}")
+            if not user:
+                return json_response(False, error='User not found', status=404)
 
-            return json_response(True, data={'channel': {
-                'id': channel_id,
-                'owner_id': user_id,
-                'username': username,
-                'name': name,
-                'category': category,
-                'price': price,
-                'subscribers': subscribers,
-                'avg_views': avg_views
-            }})
+            owner_id = user['id']
+
+        category = data.get('category', 'general')
+        try:
+            price = float(data.get('price', data.get('price_per_post', 0)) or 0)
+        except (TypeError, ValueError):
+            return json_response(False, error='price must be a valid number', status=400)
+
+        result = run_coroutine_safely(
+            verify_and_register_channel(
+                bot_instance.application.bot,
+                username,
+                owner_id,
+                category,
+                price
+            )
+        )
+
+        if result.get('success'):
+            return json_response(True, data={'channel': result.get('channel')})
+
+        error_msg = result.get('error') or 'Channel registration failed'
+        status_code = 400
+        if error_msg == 'User not found':
+            status_code = 404
+        return json_response(False, error=error_msg, status=status_code)
 
     except Exception as e:
-        logger.error(f"Error creating channel: {e}")
+        logger.error(f"Channel register error: {e}", exc_info=True)
         return json_response(False, error=str(e), status=500)
 
 
@@ -1883,7 +1926,8 @@ def api_update_deal_status(deal_id):
                 'new_status': result['new_state']
             })
         else:
-            return json_response(False, error=result['error'], status=400)
+            status_code = 409 if result.get('conflict') else 400
+            return json_response(False, error=result['error'], status=status_code)
 
     except Exception as e:
         logger.error(f"Error updating deal: {e}")
@@ -1935,12 +1979,13 @@ def api_transition_deal(deal_id):
             # Send notification asynchronously (fire and forget)
             if bot_instance and bot_instance.application:
                 try:
-                    asyncio.create_task(
+                    dispatch_background_async(
                         send_deal_notification(
                             bot_instance.application.bot,
                             deal_id,
                             new_state
-                        )
+                        ),
+                        task_name=f"deal-notify-{deal_id}-{new_state}"
                     )
                 except Exception as notif_err:
                     logger.warning(f"Notification error: {notif_err}")
@@ -1950,7 +1995,8 @@ def api_transition_deal(deal_id):
                 'transition': f"{result['old_state']} → {result['new_state']}"
             })
         else:
-            return json_response(False, error=result['error'], status=400)
+            status_code = 409 if result.get('conflict') else 400
+            return json_response(False, error=result['error'], status=status_code)
 
     except Exception as e:
         logger.error(f"Error transitioning deal: {e}")
@@ -1991,7 +2037,8 @@ def api_accept_deal(deal_id):
         # Update status using state machine
         result = transition_deal_state(deal_id, 'accepted', telegram_id)
         if not result['success']:
-            return json_response(False, error=result['error'], status=400)
+            status_code = 409 if result.get('conflict') else 400
+            return json_response(False, error=result['error'], status=status_code)
 
         logger.info(f"Deal {deal_id} accepted by user {user_id} (role: {permission['role']})")
 
@@ -2036,7 +2083,8 @@ def api_post_ad(deal_id):
 
         result = transition_deal_state(deal_id, 'posted', telegram_id)
         if not result['success']:
-            return json_response(False, error=result['error'], status=400)
+            status_code = 409 if result.get('conflict') else 400
+            return json_response(False, error=result['error'], status=status_code)
 
         logger.info(f"Deal {deal_id} marked as posted by user {user_id} (role: {permission['role']})")
 
@@ -2081,7 +2129,8 @@ def api_release_escrow(deal_id):
 
         result = transition_deal_state(deal_id, 'completed', telegram_id)
         if not result['success']:
-            return json_response(False, error=result['error'], status=400)
+            status_code = 409 if result.get('conflict') else 400
+            return json_response(False, error=result['error'], status=status_code)
 
         logger.info(f"Deal {deal_id} escrow released by user {user_id} (role: {permission['role']})")
 
@@ -2853,11 +2902,11 @@ def main():
     # Initialize database
     init_database()
 
-    token = os.getenv("BOT_TOKEN")
-    if not token:
+    if not TOKEN:
         raise ValueError("BOT_TOKEN environment variable is required")
 
-    bot_instance = AdEscrowBot(token)
+    if bot_instance is None:
+        bot_instance = AdEscrowBot(TOKEN)
 
     # Start Flask in background
     flask_thread = threading.Thread(target=run_flask, daemon=True)
