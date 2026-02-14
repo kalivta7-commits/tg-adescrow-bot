@@ -2834,7 +2834,7 @@ def api_schedule_post(deal_id):
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT d.id, d.status, d.channel_id, c.telegram_channel_id, c.bot_can_post
+                SELECT d.id, d.status, d.channel_id, c.telegram_channel_id, c.bot_can_post, c.username
                 FROM deals d
                 JOIN channels c ON d.channel_id = c.id
                 WHERE d.id = ?
@@ -2890,7 +2890,7 @@ def api_post_now(deal_id):
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT d.id, d.status, d.channel_id, c.telegram_channel_id, c.bot_can_post
+                SELECT d.id, d.status, d.channel_id, c.telegram_channel_id, c.bot_can_post, c.username
                 FROM deals d
                 JOIN channels c ON d.channel_id = c.id
                 WHERE d.id = ?
@@ -2907,7 +2907,12 @@ def api_post_now(deal_id):
                 return json_response(False, error='Bot cannot post to channel', status=400)
 
         result = run_async(
-            auto_poster.post_to_channel(bot_instance.app.bot, deal['telegram_channel_id'], ad_text)
+            auto_poster.post_to_channel(
+                bot_instance.app.bot,
+                deal['telegram_channel_id'],
+                ad_text,
+                channel_username=deal['username']
+            )
         )
 
         if result['success']:
