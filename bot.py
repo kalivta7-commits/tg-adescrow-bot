@@ -393,29 +393,32 @@ async def verify_telegram_admin(bot, telegram_id: int, channel_username: str) ->
     }
 
     try:
-        # Get chat info
-        chat = await bot.get_chat(channel_username)
-        result['telegram_channel_id'] = chat.id
-
         # Get chat member status
-        member = await bot.get_chat_member(chat.id, telegram_id)
+member = await bot.get_chat_member(chat.id, telegram_id)
 
-        if member.status not in ("administrator", "creator"):
-            return {
-                'is_admin': False,
-                'can_post': False,
-                'error': None
-            }
+status = member.status
 
-        can_post = getattr(member, 'can_post_messages', True)
+# Reject non-admins
+if status not in ("administrator", "creator"):
+    return {
+        "is_admin": False,
+        "can_post": False,
+        "can_manage": False,
+        "telegram_channel_id": chat.id,
+        "error": None
+    }
 
-        return {
-            'is_admin': True,
-            'can_post': can_post,
-            'can_manage': member.status == 'creator' or getattr(member, 'can_manage_chat', False),
-            'telegram_channel_id': chat.id,
-            'error': None
-        }
+# Admin / Owner logic
+can_post = getattr(member, "can_post_messages", True)
+
+return {
+    "is_admin": True,
+    "can_post": can_post,
+    "can_manage": status == "creator" or getattr(member, "can_manage_chat", False),
+    "telegram_channel_id": chat.id,
+    "error": None
+}
+
 
     except Exception as e:
         result['error'] = str(e)
