@@ -159,6 +159,7 @@ def init_database():
             owner_id INTEGER NOT NULL,
             telegram_channel_id INTEGER,
             username TEXT NOT NULL,
+            public_link TEXT,
             name TEXT,
             category TEXT DEFAULT 'general',
             price REAL DEFAULT 0,
@@ -277,6 +278,7 @@ def init_database():
         'ALTER TABLE channels ADD COLUMN bot_is_admin INTEGER DEFAULT 0',
         'ALTER TABLE channels ADD COLUMN bot_can_post INTEGER DEFAULT 0',
         'ALTER TABLE channels ADD COLUMN verified_at TIMESTAMP',
+        'ALTER TABLE channels ADD COLUMN public_link TEXT',
         'ALTER TABLE channels ADD COLUMN owner_ton_wallet TEXT',
         'ALTER TABLE deals ADD COLUMN advertiser_wallet TEXT',
         'ALTER TABLE deals ADD COLUMN channel_owner_wallet TEXT',
@@ -697,6 +699,9 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
     if not channel_username.startswith('@'):
         channel_username = '@' + channel_username
 
+    clean_username = (verification.get('username') or channel_username).strip().lstrip('@')
+    public_link = f"https://t.me/{clean_username}" if clean_username else None
+
     try:
         with get_db() as conn:
             cursor = conn.cursor()
@@ -710,6 +715,8 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                 cursor.execute('''
                     UPDATE channels SET
                         telegram_channel_id = ?,
+                        username = ?,
+                        public_link = ?,
                         name = ?,
                         subscribers = ?,
                         verified = 1,
@@ -719,6 +726,8 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                     WHERE id = ?
                 ''', (
                     verification['telegram_channel_id'],
+                    channel_username,
+                    public_link,
                     verification['title'],
                     verification['subscribers'],
                     existing['id']
@@ -730,13 +739,14 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                 # Create new channel
                 cursor.execute('''
                     INSERT INTO channels (
-                        owner_id, telegram_channel_id, username, name, category, price,
+                        owner_id, telegram_channel_id, username, public_link, name, category, price,
                         subscribers, verified, bot_is_admin, bot_can_post, verified_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 1, CURRENT_TIMESTAMP)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, CURRENT_TIMESTAMP)
                 ''', (
                     owner_id,
                     verification['telegram_channel_id'],
                     channel_username,
+                    public_link,
                     verification['title'],
                     category,
                     price,
@@ -1648,14 +1658,14 @@ def api_get_channels():
 
             if owner_only:
                 cursor.execute('''
-                    SELECT id, owner_id, username, name, category, price, subscribers, avg_views, created_at
+                    SELECT id, owner_id, username, public_link, name, category, price, subscribers, avg_views, created_at
                     FROM channels
                     WHERE owner_id = ?
                     ORDER BY subscribers DESC
                 ''', (owner_id,))
             else:
                 cursor.execute('''
-                    SELECT id, owner_id, username, name, category, price, subscribers, avg_views, created_at
+                    SELECT id, owner_id, username, public_link, name, category, price, subscribers, avg_views, created_at
                     FROM channels
                     WHERE verified = 1
                     ORDER BY subscribers DESC
@@ -1668,6 +1678,10 @@ def api_get_channels():
                     'id': row['id'],
                     'owner_id': row['owner_id'],
                     'handle': row['username'],
+                    'username': row['username'],
+                    'public_link': row['public_link'] or (
+                        f"https://t.me/{row['username'].lstrip('@')}" if row['username'] else None
+                    ),
                     'name': row['name'] or row['username'],
                     'category': row['category'],
                     'price': row['price'],
