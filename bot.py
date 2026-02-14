@@ -1884,8 +1884,9 @@ def api_create_channel():
         if not owner_wallet or not owner_wallet.startswith('EQ'):
             return jsonify({
                 "success": False,
-                "error": "Invalid wallet address"
+                "error": result.get("error", "Unknown registration error")
             }), 400
+
         allowed_categories = {'general', 'crypto', 'nft', 'gaming', 'finance', 'tech', 'Other'}
         if category not in allowed_categories:
             return json_response(False, error='invalid category', status=400)
