@@ -384,47 +384,45 @@ async def verify_telegram_admin(bot, telegram_id: int, channel_username: str) ->
     Verify if a user is an admin of a Telegram channel via Telegram API.
     Returns dict with 'is_admin', 'can_post' flags.
     """
-    result = {
-        'is_admin': False,
-        'can_post': False,
-        'can_manage': False,
-        'telegram_channel_id': None,
-        'error': None
-    }
-
     try:
+        # Get chat info
+        chat = await bot.get_chat(channel_username)
+
         # Get chat member status
-member = await bot.get_chat_member(chat.id, telegram_id)
+        member = await bot.get_chat_member(chat.id, telegram_id)
+        status = member.status
 
-status = member.status
+        # Reject if not admin or owner
+        if status not in ("administrator", "creator"):
+            return {
+                "is_admin": False,
+                "can_post": False,
+                "can_manage": False,
+                "telegram_channel_id": chat.id,
+                "error": None
+            }
 
-# Reject non-admins
-if status not in ("administrator", "creator"):
-    return {
-        "is_admin": False,
-        "can_post": False,
-        "can_manage": False,
-        "telegram_channel_id": chat.id,
-        "error": None
-    }
+        # Admin / Owner logic
+        can_post = getattr(member, "can_post_messages", True)
+        can_manage = status == "creator" or getattr(member, "can_manage_chat", False)
 
-# Admin / Owner logic
-can_post = getattr(member, "can_post_messages", True)
-
-return {
-    "is_admin": True,
-    "can_post": can_post,
-    "can_manage": status == "creator" or getattr(member, "can_manage_chat", False),
-    "telegram_channel_id": chat.id,
-    "error": None
-}
-
+        return {
+            "is_admin": True,
+            "can_post": can_post,
+            "can_manage": can_manage,
+            "telegram_channel_id": chat.id,
+            "error": None
+        }
 
     except Exception as e:
-        result['error'] = str(e)
         logger.error(f"Error verifying admin: {e}")
-
-    return result
+        return {
+            "is_admin": False,
+            "can_post": False,
+            "can_manage": False,
+            "telegram_channel_id": None,
+            "error": str(e)
+        }
 
 
 def get_user_channel_role(user_id: int, channel_id: int) -> Optional[str]:
