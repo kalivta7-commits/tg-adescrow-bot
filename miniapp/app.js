@@ -82,6 +82,7 @@
         initTheme();
         bindEvents();
         loadChannels();
+        loadLeaderboard();
         hideLoading();
     }
 
@@ -280,6 +281,38 @@
             s.classList.remove('active');
         });
         document.getElementById('adv-step' + step).classList.add('active');
+    }
+
+
+
+    function loadLeaderboard() {
+        fetch('/api/leaderboard/monthly')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data || !data.success) return;
+
+                var list = document.getElementById('leaderboardList');
+                if (!list) return;
+
+                list.innerHTML = '';
+
+                safeArray(data.data && data.data.leaderboard).forEach(function (item) {
+                    var row = document.createElement('div');
+                    row.className = 'leaderboard-row';
+
+                    row.innerHTML =
+                        '<strong>#' + toText(item.rank, '-') + '</strong> ' +
+                        esc(item.name || item.username || 'Unknown') +
+                        ' — ' +
+                        toNumber(item.total_earned, 0).toFixed(2) + ' TON' +
+                        ' (' + toText(item.completed_deals, 0) + ' deals)';
+
+                    list.appendChild(row);
+                });
+            })
+            .catch(function (e) {
+                console.log('Error loading leaderboard:', e);
+            });
     }
 
     // Load channels from backend

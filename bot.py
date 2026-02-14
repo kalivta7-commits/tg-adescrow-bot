@@ -1825,6 +1825,55 @@ def api_get_channels():
         return json_response(False, error=str(e), status=500)
 
 
+@flask_app.route('/api/leaderboard/monthly', methods=['GET'])
+def api_monthly_leaderboard():
+    try:
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    c.id,
+                    c.name,
+                    c.username,
+                    SUM(d.escrow_amount) as total_earned,
+                    COUNT(d.id) as completed_deals
+                FROM deals d
+                JOIN channels c ON d.channel_id = c.id
+                WHERE d.status = 'completed'
+                  AND d.created_at >= ?
+                GROUP BY c.id
+                ORDER BY total_earned DESC
+                LIMIT 10
+                """,
+                (month_start,)
+            )
+
+            rows = cursor.fetchall()
+
+            leaderboard = []
+            rank = 1
+            for row in rows:
+                leaderboard.append({
+                    "rank": rank,
+                    "channel_id": row["id"],
+                    "name": row["name"],
+                    "username": row["username"],
+                    "total_earned": float(row["total_earned"] or 0),
+                    "completed_deals": row["completed_deals"]
+                })
+                rank += 1
+
+        return json_response(True, data={"leaderboard": leaderboard})
+
+    except Exception as e:
+        return json_response(False, error=str(e), status=500)
+
+
 @flask_app.route('/api/channels', methods=['POST'])
 @rate_limit()
 def api_create_channel():
