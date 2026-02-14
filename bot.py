@@ -2051,6 +2051,56 @@ def api_get_deals():
         return json_response(False, error=str(e), status=500)
 
 
+@flask_app.route('/api/leaderboard/monthly', methods=['GET'])
+@rate_limit()
+def api_get_monthly_leaderboard():
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT
+                    c.id AS channel_id,
+                    c.username,
+                    c.name,
+                    SUM(d.escrow_amount) AS total_earned,
+                    COUNT(d.id) AS completed_count,
+                    c.total_deals,
+                    c.completed_deals
+                FROM deals d
+                JOIN channels c ON d.channel_id = c.id
+                WHERE d.status = 'completed'
+                  AND strftime('%Y-%m', d.created_at) = strftime('%Y-%m', 'now')
+                GROUP BY c.id, c.username, c.name, c.total_deals, c.completed_deals
+                ORDER BY total_earned DESC
+                LIMIT 5
+            ''')
+            rows = cursor.fetchall()
+
+        leaders = []
+        for index, row in enumerate(rows):
+            total_deals = row['total_deals'] or 0
+            completed_deals = row['completed_deals'] or 0
+            success_rate = 0.0
+            if total_deals > 0:
+                success_rate = round((completed_deals / total_deals) * 100, 2)
+
+            leaders.append({
+                'rank': index + 1,
+                'channel_id': row['channel_id'],
+                'username': row['username'],
+                'name': row['name'],
+                'total_earned': row['total_earned'] or 0,
+                'completed_count': row['completed_count'] or 0,
+                'success_rate': success_rate
+            })
+
+        return json_response(True, data={'leaders': leaders})
+
+    except Exception as e:
+        logger.error(f"Error getting monthly leaderboard: {e}")
+        return json_response(False, error=str(e), status=500)
+
+
 @flask_app.route('/api/deal/<int:deal_id>', methods=['GET'])
 @rate_limit()
 def api_get_single_deal(deal_id):
