@@ -224,9 +224,11 @@ async def post_to_channel(
                 parse_mode='Markdown'
             )
         
-        result['success'] = True
-        result['message_id'] = message.message_id
-        logger.info(f"Posted to channel {channel_id}, message_id={message.message_id}")
+        return {
+            'success': True,
+            'message_id': message.message_id,
+            'chat_id': channel_id
+        }
         
     except Exception as e:
         result['error'] = str(e)

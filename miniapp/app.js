@@ -182,6 +182,23 @@
             });
         });
         document.getElementById('btnRefresh').addEventListener('click', loadDeals);
+
+        document.addEventListener('click', function (e) {
+            if (e.target.classList.contains('delete-post-btn')) {
+                var dealId = e.target.getAttribute('data-id');
+
+                apiPost('/api/deal/delete_post', {
+                    deal_id: dealId,
+                    user_id: State.user.id
+                }).then(function (res) {
+                    if (res && res.success) {
+                        loadDeals();
+                    } else {
+                        alert(res.error || 'Failed to delete');
+                    }
+                });
+            }
+        });
     }
 
     // Switch between main tabs
@@ -643,6 +660,13 @@
                 actions += '</div>';
             }
 
+            var deleteButton = '';
+            if (status === 'posted' && d.role === 'owner') {
+                deleteButton += '<button class="delete-post-btn" data-id="' + d.id + '">';
+                deleteButton += '🗑 Delete Post';
+                deleteButton += '</button>';
+            }
+
             html += '<div class="deal-card' + (isTerminal ? ' terminal' : '') + '" data-id="' + d.id + '">' +
                 '<div class="deal-timeline">' + timeline + '</div>' +
                 '<div class="deal-header">' +
@@ -653,6 +677,7 @@
                 '<span class="deal-channel">' + esc(d.channel || '') + '</span>' +
                 '<span class="deal-amount">' + (d.amount || d.escrow_amount || 0) + ' TON</span>' +
                 '</div>' +
+                deleteButton +
                 actions +
                 '</div>';
         });
