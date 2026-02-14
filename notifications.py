@@ -22,6 +22,17 @@ NOTIFICATION_COOLDOWN_SECONDS = 60  # Minimum seconds between same notifications
 # =============================================================================
 
 TEMPLATES = {
+    'created': """
+🆕 *New Escrow Deal Created*
+
+An ad campaign escrow deal has been created for *{channel}*.
+
+💰 Escrow Amount: *{amount} TON*
+📝 Status: Pending approval
+
+_Deal #{deal_id}_
+""",
+
     'accepted': """
 ✅ *Deal Accepted*
 
@@ -122,6 +133,7 @@ _Deal #{deal_id}_
 
 # Notification routing: which user types should receive each notification
 NOTIFICATION_ROUTING = {
+    'created': ['advertiser', 'channel_owner'],
     'accepted': ['advertiser'],
     'funded': ['channel_owner'],
     'scheduled': ['advertiser', 'channel_owner'],

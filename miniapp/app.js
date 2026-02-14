@@ -222,17 +222,22 @@
 
     // Refresh deals with smart update (only update UI if data changed)
     function refreshDeals() {
-        apiGet('/api/deals')
+        if (!State.user || !State.user.id) {
+            return;
+        }
+
+        apiGet('/api/deals?user_id=' + encodeURIComponent(State.user.id))
             .then(function (res) {
-                if (res && res.success === true && Array.isArray(res.data)) {
+                var deals = safeArray(res && res.data && res.data.deals);
+                if (res && res.success === true && deals.length >= 0) {
                     // Create hash to detect changes
-                    var newHash = JSON.stringify(res.data.map(function (d) {
+                    var newHash = JSON.stringify(deals.map(function (d) {
                         var deal = safeObj(d);
                         return toText(deal.id, '0') + ':' + toText(deal.status, 'pending');
                     }));
 
                     if (newHash !== State.lastDealHash) {
-                        State.deals = res.data;
+                        State.deals = deals;
                         State.lastDealHash = newHash;
                         renderDeals();
                         console.log('[Polling] Deals updated');
@@ -444,13 +449,17 @@
                     return item.id == channelId;
                 });
 
+                var amount = toNumber(channel && channel.price, 0);
+                if (!(amount > 0)) {
+                    throw new Error('Invalid channel amount for channel #' + channelId);
+                }
+
                 return apiPost('/api/deal/create', {
                     campaign_id: campaignData.id,
-                    user_id: State.userId,
+                    user_id: State.user.id,
                     channel_id: channelId,
-                    escrow_amount: toNumber(channel && channel.price, 0),
-                    memo: title,
-                    status: 'pending'
+                    amount: amount,
+                    memo: 'Ad campaign escrow'
                 }).then(function (dealRes) {
                     if (!(dealRes && dealRes.success === true && dealRes.data)) {
                         throw new Error(dealRes && dealRes.error ? dealRes.error : 'Failed to create deal');
@@ -570,9 +579,15 @@
 
     // Load deals from backend
     function loadDeals() {
-        apiGet('/api/deals')
+        if (!State.user || !State.user.id) {
+            State.deals = [];
+            renderDeals();
+            return;
+        }
+
+        apiGet('/api/deals?user_id=' + encodeURIComponent(State.user.id))
             .then(function (res) {
-                State.deals = res && res.success === true && Array.isArray(res.data) ? res.data : [];
+                State.deals = res && res.success === true ? safeArray(res && res.data && res.data.deals) : [];
                 renderDeals();
             })
             .catch(function (e) {
