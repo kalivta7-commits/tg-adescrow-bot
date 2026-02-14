@@ -406,8 +406,10 @@
     }
 
     async function uploadMedia(file) {
-        if (file.size > 10 * 1024 * 1024) {
-            alert("File exceeds 10MB limit");
+        const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
+
+        if (file.size > MAX_UPLOAD_SIZE) {
+            alert("Maximum allowed file size is 50MB");
             return null;
         }
 
