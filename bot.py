@@ -1875,6 +1875,24 @@ def api_create_channel():
         except (TypeError, ValueError):
             return json_response(False, error='price must be a valid number', status=400)
 
+        # Verify user is actually admin of channel
+        admin_check = run_coroutine_safely(
+            verify_telegram_admin(
+                bot_instance.application.bot,
+                int(telegram_id),
+                username
+            )
+        )
+
+        if admin_check.get('error'):
+            return json_response(False, error=admin_check['error'], status=400)
+
+        if not admin_check.get('is_admin'):
+            return json_response(False, error="❌ You are not a channel admin.", status=403)
+
+        if not admin_check.get('can_post'):
+            return json_response(False, error="❌ You must have 'Post Messages' permission.", status=403)
+
         result = run_coroutine_safely(
             verify_and_register_channel(
                 bot_instance.application.bot,
