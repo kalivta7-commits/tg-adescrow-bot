@@ -109,9 +109,12 @@
         if (State.user.id) {
             apiPost('/api/auth', { telegram_id: State.user.id })
                 .then(function (res) {
-                    if (res.success && res.user) {
-                        State.userId = res.user.id;
+                    var user = safeObj((res && res.user) || (res && res.data && res.data.user));
+                    if (res && res.success && user.id) {
+                        State.userId = user.id;
                         console.log('Authenticated as user:', State.userId);
+                    } else {
+                        throw new Error((res && res.error) || 'Auth response missing user id');
                     }
                 })
                 .catch(function (e) {
@@ -382,6 +385,16 @@
         var text = toText(textEl && textEl.value).trim();
         var budget = toNumber(budgetEl && budgetEl.value, 0);
 
+        if (!State.userId) {
+            toast('Authentication incomplete. Please reopen MiniApp and try again.', 'error');
+            return;
+        }
+
+        if (safeArray(State.selected).length === 0) {
+            toast('Please select at least one channel before submitting.', 'error');
+            return;
+        }
+
         if (!title || title.length < 3) {
             toast('Please enter a valid campaign title', 'error');
             return;
@@ -409,16 +422,15 @@
 
         // Create campaign via API
         return apiPost('/api/campaign/create', {
-            telegram_id: State.user.id,
+            user_id: State.userId,
             title: title,
             text: text,
             budget: budget
         }).then(function (res) {
-            if (!(res && res.success === true && res.data && res.data.id)) {
+            var campaignData = safeObj((res && res.data && res.data.campaign) || (res && res.data));
+            if (!(res && res.success === true && campaignData && campaignData.id)) {
                 throw new Error(res && res.error ? res.error : 'Failed to create campaign');
             }
-
-            var campaignData = safeObj(res.data);
             State.campaign = campaignData;
 
             var selected = safeArray(State.selected).filter(function (channelId) {
@@ -434,8 +446,10 @@
 
                 return apiPost('/api/deal/create', {
                     campaign_id: campaignData.id,
+                    user_id: State.userId,
                     channel_id: channelId,
                     escrow_amount: toNumber(channel && channel.price, 0),
+                    memo: title,
                     status: 'pending'
                 }).then(function (dealRes) {
                     if (!(dealRes && dealRes.success === true && dealRes.data)) {
@@ -451,7 +465,7 @@
             toast('Request submitted successfully', 'success');
         }).catch(function (e) {
             console.log('Error submitting request:', e);
-            toast('Error submitting request', 'error');
+            toast('Error submitting request: ' + (e && e.message ? e.message : 'Unknown error'), 'error');
         }).finally(function () {
             setLoading('btnSubmitRequest', false);
         });
@@ -664,8 +678,15 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         }).then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
+            return r.json().catch(function () {
+                return {};
+            }).then(function (body) {
+                if (!r.ok) {
+                    var details = body && (body.error || body.message);
+                    throw new Error(details || ('HTTP ' + r.status));
+                }
+                return body;
+            });
         });
     }
 

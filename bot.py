@@ -1748,18 +1748,47 @@ def api_create_campaign():
     try:
         data = request.get_json() or {}
 
-        advertiser_telegram_id = data.get('user_id')
-        title = data.get('title', 'Untitled Campaign')
-        text = data.get('text') or data.get('description', '')
-        budget = float(data.get('budget', 0))
+        user_id_raw = data.get('user_id')
+        title = str(data.get('title') or '').strip()
+        text = str(data.get('text') or data.get('description') or '').strip()
+        budget_raw = data.get('budget')
+
+        if user_id_raw is None:
+            return jsonify({'success': False, 'error': 'user_id: is required'}), 400
+
+        try:
+            advertiser_id = int(user_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'user_id: must be an integer database id'}), 400
+
+        if advertiser_id <= 0:
+            return jsonify({'success': False, 'error': 'user_id: must be greater than 0'}), 400
 
         if not title:
-            return json_response(False, error='title is required', status=400)
+            return jsonify({'success': False, 'error': 'title: is required'}), 400
 
-        if not advertiser_telegram_id:
-            return json_response(False, error='user_id (telegram_id) is required', status=400)
+        if len(title) < 3:
+            return jsonify({'success': False, 'error': 'title: must be at least 3 characters'}), 400
 
-        advertiser_id = get_user_id(advertiser_telegram_id)
+        if not text:
+            return jsonify({'success': False, 'error': 'text: is required'}), 400
+
+        if len(text) < 10:
+            return jsonify({'success': False, 'error': 'text: must be at least 10 characters'}), 400
+
+        try:
+            budget = float(budget_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'budget: must be a valid number'}), 400
+
+        if budget <= 0:
+            return jsonify({'success': False, 'error': 'budget: must be greater than 0'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM users WHERE id = ?', (advertiser_id,))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'error': 'user_id: user not found'}), 404
 
         with get_db() as conn:
             cursor = conn.cursor()
@@ -1772,18 +1801,25 @@ def api_create_campaign():
             campaign_id = cursor.lastrowid
             logger.info(f"API: Created campaign {campaign_id} - {title}")
 
-            return json_response(True, data={'campaign': {
-                'id': campaign_id,
-                'advertiser_id': advertiser_id,
-                'title': title,
-                'text': text,
-                'budget': budget,
-                'status': 'pending'
-            }})
+            return jsonify({
+                'success': True,
+                'campaign_id': campaign_id,
+                'message': 'Campaign created',
+                'data': {
+                    'campaign': {
+                        'id': campaign_id,
+                        'advertiser_id': advertiser_id,
+                        'title': title,
+                        'text': text,
+                        'budget': budget,
+                        'status': 'pending'
+                    }
+                }
+            }), 200
 
     except Exception as e:
         logger.error(f"Error creating campaign: {e}")
-        return json_response(False, error=str(e), status=500)
+        return jsonify({'success': False, 'error': f'campaign_create: {str(e)}'}), 500
 
 
 # -----------------------------------------------------------------------------
@@ -1854,7 +1890,7 @@ def api_create_deal():
 
         campaign_id = data.get('campaign_id')
         channel_id = data.get('channel_id')
-        advertiser_telegram_id = data.get('advertiser_id') or data.get('user_id')
+        user_id_raw = data.get('user_id')
         memo = data.get('memo')
         amount_raw = data.get('amount', data.get('escrow_amount', 0))
 
@@ -1873,23 +1909,29 @@ def api_create_deal():
         except (TypeError, ValueError):
             return json_response(False, error='channel_id must be a valid integer', status=400)
 
+        try:
+            advertiser_id = int(user_id_raw)
+        except (TypeError, ValueError):
+            return json_response(False, error='user_id must be a valid integer', status=400)
+
         if campaign_id <= 0:
             return json_response(False, error='campaign_id is required', status=400)
         if channel_id <= 0:
             return json_response(False, error='channel_id is required', status=400)
-        if not advertiser_telegram_id:
-            return json_response(False, error='advertiser_id (telegram_id) is required', status=400)
+        if advertiser_id <= 0:
+            return json_response(False, error='user_id must be greater than 0', status=400)
         if amount <= 0:
             return json_response(False, error='amount must be greater than 0', status=400)
         if not memo:
             return json_response(False, error='memo is required', status=400)
 
-        # Convert telegram_id to database user_id
-        advertiser_id = get_user_id(advertiser_telegram_id)
-
-        # Verify campaign and channel exist
+        # Verify user, campaign and channel exist
         with get_db() as conn:
             cursor = conn.cursor()
+            cursor.execute('SELECT id FROM users WHERE id = ?', (advertiser_id,))
+            if not cursor.fetchone():
+                return json_response(False, error='User not found', status=404)
+
             cursor.execute('SELECT id FROM campaigns WHERE id = ?', (campaign_id,))
             if not cursor.fetchone():
                 return json_response(False, error='Campaign not found', status=404)
