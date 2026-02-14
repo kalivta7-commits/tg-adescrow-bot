@@ -3417,6 +3417,29 @@ def api_cancel_scheduled_post(deal_id):
         return json_response(False, error=str(e), status=500)
 
 
+@flask_app.route('/generate-escrow-wallet')
+def generate_escrow_wallet():
+    from tonsdk.contract.wallet import Wallets, WalletVersionEnum
+    import base64
+
+    # Create a new TON wallet
+    mnemonics, pub_k, priv_k, wallet = Wallets.create(
+        version=WalletVersionEnum.v4r2,
+        workchain=0
+    )
+
+    # Convert address and private key to strings
+    address = wallet.address.to_string(True, True, True)
+    private_key = base64.b64encode(priv_k).decode()
+
+    # Return wallet details
+    return {
+        'address': address,
+        'private_key': private_key,
+        'mnemonics': ' '.join(mnemonics)
+    }
+
+
 # =============================================================================
 # MAIN
 # =============================================================================
