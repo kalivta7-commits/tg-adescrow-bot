@@ -308,7 +308,7 @@
                 if (res && res.success === true && Array.isArray(res.data)) {
                     State.channels = res.data.filter(function (ch) {
                         var channel = safeObj(ch);
-                        var catMatch = !category || toText(channel.category) === category;
+                        var catMatch = !category || toText(channel.category).toLowerCase() === toText(category).toLowerCase();
                         var subsMatch = toNumber(channel.subscribers, 0) >= minSubs;
                         var priceMatch = toNumber(channel.price, 0) <= maxPrice;
                         return catMatch && subsMatch && priceMatch;
@@ -593,6 +593,8 @@
         if (!handle.startsWith('@')) handle = '@' + handle;
         if (!name) { toast('Please enter channel name', 'error'); return; }
         if (!category) { toast('Please select a category', 'error'); return; }
+        var allowedCategories = ['crypto', 'nft', 'gaming', 'finance', 'tech', 'Other'];
+        if (allowedCategories.indexOf(category) === -1) { toast('Invalid category selected', 'error'); return; }
         if (subs < 2) { toast('Minimum 100 subscribers required', 'error'); return; }
         if (price < 1) { toast('Minimum price is 1 TON', 'error'); return; }
 
