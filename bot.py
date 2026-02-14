@@ -379,10 +379,10 @@ class ChannelRole:
         return role in [ChannelRole.OWNER, ChannelRole.MANAGER]
 
 
-async def verify_telegram_admin(bot, telegram_user_id: int, channel_username: str) -> dict:
+async def verify_telegram_admin(bot, telegram_id: int, channel_username: str) -> dict:
     """
     Verify if a user is an admin of a Telegram channel via Telegram API.
-    Returns dict with 'is_admin', 'can_post', 'can_manage' flags.
+    Returns dict with 'is_admin', 'can_post' flags.
     """
     result = {
         'is_admin': False,
@@ -398,14 +398,24 @@ async def verify_telegram_admin(bot, telegram_user_id: int, channel_username: st
         result['telegram_channel_id'] = chat.id
 
         # Get chat member status
-        member = await bot.get_chat_member(chat.id, telegram_user_id)
+        member = await bot.get_chat_member(chat.id, telegram_id)
 
-        if member.status in ['creator', 'administrator']:
-            result['is_admin'] = True
-            result['can_post'] = getattr(member, 'can_post_messages', True)
-            result['can_manage'] = member.status == 'creator' or getattr(member, 'can_manage_chat', False)
+        if member.status not in ("administrator", "creator"):
+            return {
+                'is_admin': False,
+                'can_post': False,
+                'error': None
+            }
 
-        logger.info(f"Verified admin: user={telegram_user_id}, channel={channel_username}, is_admin={result['is_admin']}")
+        can_post = getattr(member, 'can_post_messages', True)
+
+        return {
+            'is_admin': True,
+            'can_post': can_post,
+            'can_manage': member.status == 'creator' or getattr(member, 'can_manage_chat', False),
+            'telegram_channel_id': chat.id,
+            'error': None
+        }
 
     except Exception as e:
         result['error'] = str(e)
@@ -1847,11 +1857,13 @@ def api_create_channel():
     try:
         data = request.get_json() or {}
 
-        telegram_id = data.get('telegram_id') or data.get('user_id')
+        telegram_id = data.get('user_id') or data.get('telegram_id')
         username = data.get('username') or data.get('channel_handle')
 
         if not telegram_id or not username:
-            return json_response(False, error='telegram_id and username are required', status=400)
+            return json_response(False, error='user_id and username are required', status=400)
+
+        username = username.strip().lstrip('@')
 
         if bot_instance is None or bot_instance.application is None:
             return json_response(False, error='Bot instance is not initialized', status=503)
@@ -1888,10 +1900,10 @@ def api_create_channel():
             return json_response(False, error=admin_check['error'], status=400)
 
         if not admin_check.get('is_admin'):
-            return json_response(False, error="❌ You are not a channel admin.", status=403)
+            return json_response(False, error="❌ You are not the channel owner or admin.", status=403)
 
         if not admin_check.get('can_post'):
-            return json_response(False, error="❌ You must have 'Post Messages' permission.", status=403)
+            return json_response(False, error="❌ You must have Post Messages permission.", status=403)
 
         result = run_coroutine_safely(
             verify_and_register_channel(

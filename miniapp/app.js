@@ -605,7 +605,7 @@
         setLoading('btnRegister', true);
 
         var data = {
-            telegram_id: State.user.id,
+            user_id: State.user.id,
             username: handle,
             name: name,
             category: category,
