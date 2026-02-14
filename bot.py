@@ -169,6 +169,8 @@ def init_database():
             bot_is_admin INTEGER DEFAULT 0,
             bot_can_post INTEGER DEFAULT 0,
             owner_ton_wallet TEXT,
+            total_deals INTEGER DEFAULT 0,
+            completed_deals INTEGER DEFAULT 0,
             verified_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (owner_id) REFERENCES users(id)
@@ -280,6 +282,8 @@ def init_database():
         'ALTER TABLE channels ADD COLUMN verified_at TIMESTAMP',
         'ALTER TABLE channels ADD COLUMN public_link TEXT',
         'ALTER TABLE channels ADD COLUMN owner_ton_wallet TEXT',
+        'ALTER TABLE channels ADD COLUMN total_deals INTEGER DEFAULT 0',
+        'ALTER TABLE channels ADD COLUMN completed_deals INTEGER DEFAULT 0',
         'ALTER TABLE deals ADD COLUMN advertiser_wallet TEXT',
         'ALTER TABLE deals ADD COLUMN channel_owner_wallet TEXT',
         'ALTER TABLE deals ADD COLUMN message_id INTEGER',
@@ -957,6 +961,13 @@ def transition_deal_state(deal_id: int, new_state: str, actor_telegram_id: int =
                 result['error'] = 'State changed by another process (concurrent modification)'
                 result['conflict'] = True
                 return result
+
+            if new_state == 'completed' and current_state != 'completed':
+                cursor.execute('''
+                    UPDATE channels
+                    SET completed_deals = COALESCE(completed_deals, 0) + 1
+                    WHERE id = ?
+                ''', (deal['channel_id'],))
 
             conn.commit()
 
@@ -1699,14 +1710,16 @@ def api_get_channels():
 
             if owner_only:
                 cursor.execute('''
-                    SELECT id, owner_id, username, public_link, name, category, price, subscribers, avg_views, created_at
+                    SELECT id, owner_id, username, public_link, name, category, price, subscribers, avg_views,
+                           total_deals, completed_deals, created_at
                     FROM channels
                     WHERE owner_id = ?
                     ORDER BY subscribers DESC
                 ''', (owner_id,))
             else:
                 cursor.execute('''
-                    SELECT id, owner_id, username, public_link, name, category, price, subscribers, avg_views, created_at
+                    SELECT id, owner_id, username, public_link, name, category, price, subscribers, avg_views,
+                           total_deals, completed_deals, created_at
                     FROM channels
                     WHERE verified = 1
                     ORDER BY subscribers DESC
@@ -1715,6 +1728,12 @@ def api_get_channels():
 
             channels = []
             for row in rows:
+                total = row['total_deals'] or 0
+                completed = row['completed_deals'] or 0
+                success_rate = 0
+                if total > 0:
+                    success_rate = round((completed / total) * 100, 2)
+
                 channels.append({
                     'id': row['id'],
                     'owner_id': row['owner_id'],
@@ -1728,6 +1747,9 @@ def api_get_channels():
                     'price': row['price'],
                     'subscribers': row['subscribers'],
                     'views': row['avg_views'],
+                    'total_deals': total,
+                    'completed_deals': completed,
+                    'success_rate': success_rate,
                     'created_at': row['created_at']
                 })
 
@@ -2061,6 +2083,12 @@ def api_create_deal():
                 VALUES (?, ?, ?, ?)
             ''', (campaign_id, channel_id, 'pending', amount))
             deal_id = cursor.lastrowid
+
+            cursor.execute('''
+                UPDATE channels
+                SET total_deals = COALESCE(total_deals, 0) + 1
+                WHERE id = ?
+            ''', (channel_id,))
 
             cursor.execute('''
                 SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,

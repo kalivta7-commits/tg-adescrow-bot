@@ -348,6 +348,7 @@
             var channelViews = formatNum(toNumber(channel.avg_views, 0));
             var channelPrice = toNumber(channel.price, 0);
             var channelPublicLink = toText(channel.public_link || '');
+            var hasSuccessRate = channel.success_rate !== undefined && channel.success_rate !== null;
             var isSelected = State.selected.indexOf(channelId) !== -1;
             html += '<div class="channel-card' + (isSelected ? ' selected' : '') + '" data-id="' + esc(channelId) + '">' +
                 '<div class="channel-check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>' +
@@ -360,6 +361,7 @@
                 '<span class="meta-tag">' + esc(channelSubs) + ' subs</span>' +
                 '<span class="meta-tag">' + esc(channelViews) + ' views</span>' +
                 '</div>' +
+                (hasSuccessRate ? '<div class="channel-success">⭐ Success Rate: ' + esc(toText(channel.success_rate)) + '%</div>' : '') +
                 '</div>' +
                 '<div class="channel-price">' +
                 '<div class="price-value">' + esc(toText(channelPrice)) + ' TON</div>' +
