@@ -2145,6 +2145,8 @@ def api_get_single_deal(deal_id):
 
 
 @flask_app.route('/api/deal/create', methods=['POST'])
+@flask_app.route('/api/create-deal', methods=['POST'])
+@flask_app.route('/api/deals', methods=['POST'])
 @rate_limit()
 def api_create_deal():
     if request.method == 'OPTIONS':
@@ -2153,21 +2155,21 @@ def api_create_deal():
     try:
         data = request.get_json() or {}
 
+        if supabase is None:
+            return json_response(False, error='Supabase is not configured', status=503)
+
         campaign_id = data.get('campaign_id')
         channel_id = data.get('channel_id')
-        advertiser_telegram_id = data.get('user_id')
+        buyer_id = data.get('buyer_id', data.get('user_id'))
         memo = data.get('memo')
         amount_raw = data.get('amount')
-        media_type = data.get('media_type')
-        media_url = data.get('media_url')
 
         missing_fields = [
             field_name for field_name, value in {
                 'campaign_id': campaign_id,
                 'channel_id': channel_id,
-                'user_id': advertiser_telegram_id,
+                'buyer_id': buyer_id,
                 'amount': amount_raw,
-                'memo': memo
             }.items() if value in (None, '')
         ]
         if missing_fields:
@@ -2189,85 +2191,43 @@ def api_create_deal():
             return json_response(False, error='channel_id must be a valid integer', status=400)
 
         try:
-            advertiser_telegram_id = int(advertiser_telegram_id)
+            buyer_id = int(buyer_id)
         except (TypeError, ValueError):
-            return json_response(False, error='user_id must be a valid telegram id integer', status=400)
+            return json_response(False, error='buyer_id must be a valid integer', status=400)
 
         if campaign_id <= 0:
             return json_response(False, error='campaign_id is required', status=400)
         if channel_id <= 0:
             return json_response(False, error='channel_id is required', status=400)
-        if advertiser_telegram_id <= 0:
-            return json_response(False, error='user_id must be greater than 0', status=400)
+        if buyer_id <= 0:
+            return json_response(False, error='buyer_id must be greater than 0', status=400)
         if amount <= 0:
             return json_response(False, error='amount must be greater than 0', status=400)
-        if not memo:
-            return json_response(False, error='memo is required', status=400)
+        escrow_address = os.getenv('ESCROW_WALLET_ADDRESS')
+        deal_payload = {
+            'campaign_id': campaign_id,
+            'channel_id': channel_id,
+            'buyer_id': buyer_id,
+            'amount': amount,
+            'status': 'waiting_payment',
+            'escrow_address': escrow_address
+        }
 
-        # Verify user, campaign and channel exist
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id FROM users WHERE telegram_id = ?', (advertiser_telegram_id,))
-            advertiser_row = cursor.fetchone()
-            if not advertiser_row:
-                return json_response(False, error='User not found', status=404)
-            advertiser_id = advertiser_row['id']
+        try:
+            insert_resp = supabase.table('deals').insert(deal_payload).execute()
+        except Exception as insert_error:
+            logger.error(f"Supabase deal insert exception. Payload={deal_payload}. Error={insert_error}")
+            return json_response(False, error='Failed to create deal in Supabase', status=500)
 
-            cursor.execute('SELECT id FROM campaigns WHERE id = ? AND advertiser_id = ?', (campaign_id, advertiser_id))
-            if not cursor.fetchone():
-                return json_response(False, error='Campaign not found', status=404)
+        inserted_rows = insert_resp.data or []
+        if not inserted_rows:
+            logger.error(f"Supabase deal insert returned no data. Payload={deal_payload}. Response={insert_resp}")
+            return json_response(False, error='Failed to create deal in Supabase', status=500)
 
-            cursor.execute('SELECT id FROM channels WHERE id = ?', (channel_id,))
-            if not cursor.fetchone():
-                return json_response(False, error='Channel not found', status=404)
+        deal_row = inserted_rows[0]
+        deal_id = deal_row.get('id')
 
-        # Check for existing active deal (race condition prevention)
-        with get_db() as conn:
-            conn.execute('BEGIN IMMEDIATE')
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id FROM deals
-                WHERE campaign_id = ? AND channel_id = ?
-                  AND status NOT IN ('completed', 'cancelled', 'refunded')
-            ''', (campaign_id, channel_id))
-            existing = cursor.fetchone()
-            if existing:
-                conn.rollback()
-                return json_response(False, error='An active deal already exists for this campaign and channel', status=409)
-
-            cursor.execute('''
-                INSERT INTO deals (campaign_id, channel_id, status, escrow_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (campaign_id, channel_id, 'pending', amount))
-            deal_id = cursor.lastrowid
-
-            cursor.execute('''
-                UPDATE deals
-                   SET media_type = ?, media_url = ?
-                 WHERE id = ?
-            ''', (media_type, media_url, deal_id))
-
-            cursor.execute('''
-                UPDATE channels
-                SET total_deals = COALESCE(total_deals, 0) + 1
-                WHERE id = ?
-            ''', (channel_id,))
-
-            cursor.execute('''
-                SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,
-                       d.media_type, d.media_url,
-                       c.username as channel_handle, c.name as channel_name,
-                       camp.title as campaign_title
-                FROM deals d
-                LEFT JOIN channels c ON d.channel_id = c.id
-                LEFT JOIN campaigns camp ON d.campaign_id = camp.id
-                WHERE d.id = ?
-            ''', (deal_id,))
-            deal_row = cursor.fetchone()
-
-            conn.commit()
-
-        logger.info(f"API: Created deal {deal_id}")
+        logger.info(f"API: Created Supabase deal {deal_id}")
 
         if bot_instance is not None and bot_instance.application is not None and NOTIFICATIONS_AVAILABLE:
             dispatch_background_async(
@@ -2275,32 +2235,15 @@ def api_create_deal():
                     bot_instance.application.bot,
                     deal_id,
                     'created',
-                    {'memo': memo}
+                    {'memo': memo or ''}
                 ),
                 task_name=f"deal-notify-{deal_id}-created"
             )
 
         return json_response(True, data={
-            'status': 'pending',
+            'status': deal_row.get('status', 'waiting_payment'),
             'deal_id': deal_id,
-            'deal': {
-                'id': deal_row['id'],
-                'campaign_id': deal_row['campaign_id'],
-                'channel_id': deal_row['channel_id'],
-                'status': deal_row['status'],
-                'label': DealStateMachine.get_label(deal_row['status']),
-                'escrow_amount': deal_row['escrow_amount'],
-                'amount': deal_row['escrow_amount'],
-                'title': deal_row['campaign_title'] or deal_row['channel_name'] or f"Deal #{deal_row['id']}",
-                'channel': deal_row['channel_handle'],
-                'type': 'deal',
-                'step': DealStateMachine.get_step(deal_row['status']),
-                'is_terminal': DealStateMachine.is_terminal(deal_row['status']),
-                'allowed_transitions': DealStateMachine.get_allowed_transitions(deal_row['status']),
-                'created_at': deal_row['created_at'],
-                'media_type': media_type,
-                'media_url': media_url
-            }
+            'deal': deal_row
         })
 
     except Exception as e:
