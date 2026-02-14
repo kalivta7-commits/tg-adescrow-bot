@@ -1851,6 +1851,9 @@ def api_create_channel():
             owner_id = user['id']
 
         category = data.get('category', 'general')
+        allowed_categories = {'general', 'crypto', 'nft', 'gaming', 'finance', 'tech', 'Other'}
+        if category not in allowed_categories:
+            return json_response(False, error='invalid category', status=400)
         try:
             price = float(data.get('price', data.get('price_per_post', 0)) or 0)
         except (TypeError, ValueError):
