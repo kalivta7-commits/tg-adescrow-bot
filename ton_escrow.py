@@ -381,6 +381,66 @@ async def send_ton(
     return result
 
 
+async def send_from_platform_wallet(to_address: str, amount: float, comment: str = "") -> Dict[str, Any]:
+    """
+    Send TON using platform escrow wallet defined in environment variable ESCROW_PRIVATE_KEY.
+    """
+
+    result = {"success": False, "tx_hash": None, "error": None}
+
+    try:
+        private_key_b64 = os.getenv("ESCROW_PRIVATE_KEY")
+        if not private_key_b64:
+            return {"success": False, "error": "ESCROW_PRIVATE_KEY not set"}
+
+        # Decode base64 private key
+        priv_key = urlsafe_b64decode(private_key_b64.encode())
+
+        # Create wallet instance from private key
+        wallet = Wallets.from_private_key(
+            private_key=priv_key,
+            version=WalletVersionEnum.v4r2,
+            workchain=0
+        )
+
+        from_address = wallet.address.to_string(True, True, True)
+
+        # Get seqno
+        seqno = await get_wallet_seqno(from_address)
+
+        amount_nano = to_nano(amount, "ton")
+
+        transfer = wallet.create_transfer_message(
+            to_addr=to_address,
+            amount=amount_nano,
+            seqno=seqno,
+            payload=comment if comment else None
+        )
+
+        boc = bytes_to_b64str(transfer["message"].to_boc())
+
+        url = f"{get_toncenter_url()}/sendBoc"
+        payload = {"boc": boc}
+
+        if TONCENTER_API_KEY:
+            payload["api_key"] = TONCENTER_API_KEY
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                data = await response.json()
+
+                if data.get("ok"):
+                    result["success"] = True
+                    result["tx_hash"] = data.get("result", {}).get("hash")
+                else:
+                    result["error"] = data.get("error", "Transaction failed")
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
 async def get_wallet_seqno(address: str) -> int:
     """Get wallet seqno for transaction signing"""
     url = f"{get_toncenter_url()}/runGetMethod"
@@ -499,6 +559,10 @@ def sync_release_funds(encrypted_mnemonic: str, to_address: str, amount: float) 
 def sync_refund_funds(encrypted_mnemonic: str, to_address: str, amount: float) -> Dict[str, Any]:
     """Synchronous wrapper for refund_funds"""
     return _run_async(refund_funds(encrypted_mnemonic, to_address, amount))
+
+
+def sync_send_from_platform_wallet(to_address: str, amount: float) -> Dict[str, Any]:
+    return _run_async(send_from_platform_wallet(to_address, amount))
 
 
 # =============================================================================
