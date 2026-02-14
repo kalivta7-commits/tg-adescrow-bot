@@ -235,6 +235,10 @@ def init_database():
             escrow_amount REAL DEFAULT 0,
             advertiser_wallet TEXT,
             channel_owner_wallet TEXT,
+            paid_at TIMESTAMP,
+            ad_posted_at TIMESTAMP,
+            release_at TIMESTAMP,
+            refunded_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
             FOREIGN KEY (channel_id) REFERENCES channels(id)
@@ -314,6 +318,10 @@ def init_database():
         'ALTER TABLE users ADD COLUMN ton_wallet TEXT',
         'ALTER TABLE deals ADD COLUMN media_type TEXT',
         'ALTER TABLE deals ADD COLUMN media_url TEXT',
+        'ALTER TABLE deals ADD COLUMN paid_at TIMESTAMP',
+        'ALTER TABLE deals ADD COLUMN ad_posted_at TIMESTAMP',
+        'ALTER TABLE deals ADD COLUMN release_at TIMESTAMP',
+        'ALTER TABLE deals ADD COLUMN refunded_at TIMESTAMP',
     ]
 
     for migration in migrations:
@@ -982,13 +990,12 @@ def transition_deal_state(deal_id: int, new_state: str, actor_telegram_id: int =
                 return result
 
             # Optimistic update using current_state check
-            if new_state in ['paid', 'funded']:
-                release_at = (datetime.utcnow() + timedelta(hours=24)).isoformat()
+            if new_state == 'paid':
                 cursor.execute('''
                     UPDATE deals
-                    SET status = ?, release_at = COALESCE(release_at, ?)
+                    SET status = ?, paid_at = ?
                     WHERE id = ? AND status = ?
-                ''', (new_state, release_at, deal_id, current_state))
+                ''', (new_state, datetime.utcnow().isoformat(), deal_id, current_state))
             else:
                 cursor.execute('''
                     UPDATE deals SET status = ? WHERE id = ? AND status = ?
@@ -2552,14 +2559,20 @@ def admin_release(deal_id):
         if not sync_send_from_platform_wallet:
             return {"success": False, "error": "TON escrow module not available"}, 503
 
+        data = request.get_json(silent=True) or {}
+        force_override = bool(data.get("force_override"))
+
         deal_resp = supabase.table("deals").select("*").eq("id", deal_id).single().execute()
         if not deal_resp.data:
             return {"success": False, "error": "Deal not found"}, 404
 
         deal = deal_resp.data
 
-        if deal.get("status") not in ["paid", "funded"]:
-            return {"success": False, "error": "Deal not in paid state"}, 400
+        if deal.get("status") in ["released", "refunded"]:
+            return {"success": False, "error": "Deal already finalized"}, 400
+
+        if deal.get("status") != "ad_posted" and not force_override:
+            return {"success": False, "error": "Deal must be ad_posted unless force_override is true"}, 400
 
         channel_resp = supabase.table("channels").select("owner_wallet").eq("id", deal["channel_id"]).single().execute()
         if not channel_resp.data:
@@ -2584,6 +2597,34 @@ def admin_release(deal_id):
     except Exception as e:
         return {"success": False, "error": str(e)}, 500
 
+
+
+@flask_app.route('/api/deal/<int:deal_id>/ad-posted', methods=['POST'])
+@rate_limit()
+def api_mark_ad_posted(deal_id):
+    try:
+        if not supabase:
+            return {"success": False, "error": "Supabase is not configured"}, 503
+
+        deal_resp = supabase.table("deals").select("*").eq("id", deal_id).single().execute()
+        if not deal_resp.data:
+            return {"success": False, "error": "Deal not found"}, 404
+
+        deal = deal_resp.data
+        if deal.get("status") != "paid":
+            return {"success": False, "error": "Deal must be in paid state"}, 400
+
+        now = datetime.utcnow()
+        supabase.table("deals").update({
+            "status": "ad_posted",
+            "ad_posted_at": now.isoformat(),
+            "release_at": (now + timedelta(hours=24)).isoformat()
+        }).eq("id", deal_id).execute()
+
+        return {"success": True, "deal_id": deal_id, "status": "ad_posted"}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}, 500
 
 
 @flask_app.route('/api/deal/action', methods=['POST'])
@@ -3484,19 +3525,24 @@ def auto_release_worker():
             deals_resp = (
                 supabase.table("deals")
                 .select("*")
-                .in_("status", ["paid", "funded"])
+                .in_("status", ["paid", "ad_posted"])
                 .execute()
             )
 
             for deal in deals_resp.data or []:
-                if deal.get("release_at"):
+                if deal.get("status") in ("released", "refunded"):
+                    continue
+
+                now = datetime.utcnow()
+
+                # Safe auto-release: only after ad_posted confirmation + release_at reached
+                if deal.get("status") == "ad_posted" and deal.get("release_at"):
                     try:
                         release_time = datetime.fromisoformat(deal["release_at"].replace("Z", "+00:00")).replace(tzinfo=None)
                     except Exception:
-                        continue
+                        release_time = None
 
-                    if datetime.utcnow() >= release_time:
-
+                    if release_time and now >= release_time:
                         channel_resp = (
                             supabase.table("channels")
                             .select("owner_wallet")
@@ -3508,17 +3554,55 @@ def auto_release_worker():
                         if not channel_resp.data:
                             continue
 
-                        owner_wallet = channel_resp.data["owner_wallet"]
+                        owner_wallet = channel_resp.data.get("owner_wallet")
                         amount = float(deal.get("amount") or deal.get("escrow_amount") or 0)
+
+                        if not owner_wallet or amount <= 0:
+                            continue
 
                         result = sync_send_from_platform_wallet(owner_wallet, amount)
 
-                        if result["success"]:
+                        if result.get("success"):
                             supabase.table("deals").update({
                                 "status": "released",
-                                "released_at": datetime.utcnow().isoformat(),
-                                "escrow_tx_hash": result["tx_hash"]
-                            }).eq("id", deal["id"]).execute()
+                                "released_at": now.isoformat(),
+                                "escrow_tx_hash": result.get("tx_hash")
+                            }).eq("id", deal["id"]).in_("status", ["ad_posted"]).execute()
+
+                # Auto-refund if ad was never confirmed posted within 48h after payment
+                if deal.get("status") == "paid" and deal.get("paid_at"):
+                    try:
+                        paid_time = datetime.fromisoformat(deal["paid_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                    except Exception:
+                        paid_time = None
+
+                    if paid_time and now >= (paid_time + timedelta(hours=48)):
+                        buyer_wallet = deal.get("buyer_wallet") or deal.get("advertiser_wallet")
+
+                        if not buyer_wallet:
+                            buyer_resp = (
+                                supabase.table("users")
+                                .select("ton_wallet")
+                                .eq("id", deal.get("advertiser_id"))
+                                .single()
+                                .execute()
+                            )
+                            if buyer_resp.data:
+                                buyer_wallet = buyer_resp.data.get("ton_wallet")
+
+                        amount = float(deal.get("amount") or deal.get("escrow_amount") or 0)
+
+                        if not buyer_wallet or amount <= 0:
+                            continue
+
+                        result = sync_send_from_platform_wallet(buyer_wallet, amount)
+
+                        if result.get("success"):
+                            supabase.table("deals").update({
+                                "status": "refunded",
+                                "refunded_at": now.isoformat(),
+                                "escrow_tx_hash": result.get("tx_hash")
+                            }).eq("id", deal["id"]).in_("status", ["paid"]).execute()
 
         except Exception as e:
             print("Auto release error:", e)
