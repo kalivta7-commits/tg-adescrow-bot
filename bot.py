@@ -1830,17 +1830,35 @@ def api_create_campaign():
 @rate_limit()
 def api_get_deals():
     try:
+        telegram_id_raw = request.args.get('user_id')
+        if telegram_id_raw is None:
+            return json_response(False, error='user_id (telegram id) is required', status=400)
+
+        try:
+            telegram_id = int(telegram_id_raw)
+        except (TypeError, ValueError):
+            return json_response(False, error='user_id must be a valid telegram id integer', status=400)
+
         with get_db() as conn:
             cursor = conn.cursor()
+            cursor.execute('SELECT id FROM users WHERE telegram_id = ?', (telegram_id,))
+            user_row = cursor.fetchone()
+            if not user_row:
+                return json_response(False, error='User not found', status=404)
+
+            db_user_id = user_row['id']
+
             cursor.execute('''
                 SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,
+                       camp.advertiser_id, c.owner_id,
                        c.username as channel_handle, c.name as channel_name,
                        camp.title as campaign_title
                 FROM deals d
                 LEFT JOIN channels c ON d.channel_id = c.id
                 LEFT JOIN campaigns camp ON d.campaign_id = camp.id
+                WHERE camp.advertiser_id = ? OR c.owner_id = ?
                 ORDER BY d.created_at DESC
-            ''')
+            ''', (db_user_id, db_user_id))
             rows = cursor.fetchall()
 
             deals = []
@@ -1890,9 +1908,21 @@ def api_create_deal():
 
         campaign_id = data.get('campaign_id')
         channel_id = data.get('channel_id')
-        user_id_raw = data.get('user_id')
+        advertiser_telegram_id = data.get('user_id')
         memo = data.get('memo')
-        amount_raw = data.get('amount', data.get('escrow_amount', 0))
+        amount_raw = data.get('amount')
+
+        missing_fields = [
+            field_name for field_name, value in {
+                'campaign_id': campaign_id,
+                'channel_id': channel_id,
+                'user_id': advertiser_telegram_id,
+                'amount': amount_raw,
+                'memo': memo
+            }.items() if value in (None, '')
+        ]
+        if missing_fields:
+            return json_response(False, error=f"Missing required fields: {', '.join(missing_fields)}", status=400)
 
         try:
             amount = float(amount_raw)
@@ -1910,15 +1940,15 @@ def api_create_deal():
             return json_response(False, error='channel_id must be a valid integer', status=400)
 
         try:
-            advertiser_id = int(user_id_raw)
+            advertiser_telegram_id = int(advertiser_telegram_id)
         except (TypeError, ValueError):
-            return json_response(False, error='user_id must be a valid integer', status=400)
+            return json_response(False, error='user_id must be a valid telegram id integer', status=400)
 
         if campaign_id <= 0:
             return json_response(False, error='campaign_id is required', status=400)
         if channel_id <= 0:
             return json_response(False, error='channel_id is required', status=400)
-        if advertiser_id <= 0:
+        if advertiser_telegram_id <= 0:
             return json_response(False, error='user_id must be greater than 0', status=400)
         if amount <= 0:
             return json_response(False, error='amount must be greater than 0', status=400)
@@ -1928,11 +1958,13 @@ def api_create_deal():
         # Verify user, campaign and channel exist
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT id FROM users WHERE id = ?', (advertiser_id,))
-            if not cursor.fetchone():
+            cursor.execute('SELECT id FROM users WHERE telegram_id = ?', (advertiser_telegram_id,))
+            advertiser_row = cursor.fetchone()
+            if not advertiser_row:
                 return json_response(False, error='User not found', status=404)
+            advertiser_id = advertiser_row['id']
 
-            cursor.execute('SELECT id FROM campaigns WHERE id = ?', (campaign_id,))
+            cursor.execute('SELECT id FROM campaigns WHERE id = ? AND advertiser_id = ?', (campaign_id, advertiser_id))
             if not cursor.fetchone():
                 return json_response(False, error='Campaign not found', status=404)
 
@@ -1958,12 +1990,54 @@ def api_create_deal():
                 INSERT INTO deals (campaign_id, channel_id, status, escrow_amount)
                 VALUES (?, ?, ?, ?)
             ''', (campaign_id, channel_id, 'pending', amount))
+            deal_id = cursor.lastrowid
+
+            cursor.execute('''
+                SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,
+                       c.username as channel_handle, c.name as channel_name,
+                       camp.title as campaign_title
+                FROM deals d
+                LEFT JOIN channels c ON d.channel_id = c.id
+                LEFT JOIN campaigns camp ON d.campaign_id = camp.id
+                WHERE d.id = ?
+            ''', (deal_id,))
+            deal_row = cursor.fetchone()
+
             conn.commit()
 
-        deal_id = cursor.lastrowid
         logger.info(f"API: Created deal {deal_id}")
 
-        return json_response(True, data={'status': 'pending', 'deal_id': deal_id})
+        if bot_instance is not None and bot_instance.application is not None and NOTIFICATIONS_AVAILABLE:
+            dispatch_background_async(
+                send_deal_notification(
+                    bot_instance.application.bot,
+                    deal_id,
+                    'created',
+                    {'memo': memo}
+                ),
+                task_name=f"deal-notify-{deal_id}-created"
+            )
+
+        return json_response(True, data={
+            'status': 'pending',
+            'deal_id': deal_id,
+            'deal': {
+                'id': deal_row['id'],
+                'campaign_id': deal_row['campaign_id'],
+                'channel_id': deal_row['channel_id'],
+                'status': deal_row['status'],
+                'label': DealStateMachine.get_label(deal_row['status']),
+                'escrow_amount': deal_row['escrow_amount'],
+                'amount': deal_row['escrow_amount'],
+                'title': deal_row['campaign_title'] or deal_row['channel_name'] or f"Deal #{deal_row['id']}",
+                'channel': deal_row['channel_handle'],
+                'type': 'deal',
+                'step': DealStateMachine.get_step(deal_row['status']),
+                'is_terminal': DealStateMachine.is_terminal(deal_row['status']),
+                'allowed_transitions': DealStateMachine.get_allowed_transitions(deal_row['status']),
+                'created_at': deal_row['created_at']
+            }
+        })
 
     except Exception as e:
         logger.error(f"Error creating deal: {e}")
