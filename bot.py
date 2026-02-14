@@ -400,10 +400,17 @@ async def verify_telegram_admin(bot, telegram_user_id: int, channel_username: st
         # Get chat member status
         member = await bot.get_chat_member(chat.id, telegram_user_id)
 
-        if member.status in ['creator', 'administrator']:
+        status = member.status
+        if status not in ("administrator", "creator"):
+            result['is_admin'] = False
+            result['can_post'] = False
+            result['error'] = None
+        else:
+            can_post = getattr(member, 'can_post_messages', True)
             result['is_admin'] = True
-            result['can_post'] = getattr(member, 'can_post_messages', True)
-            result['can_manage'] = member.status == 'creator' or getattr(member, 'can_manage_chat', False)
+            result['can_post'] = can_post
+            result['can_manage'] = status == 'creator' or getattr(member, 'can_manage_chat', False)
+            result['error'] = None
 
         logger.info(f"Verified admin: user={telegram_user_id}, channel={channel_username}, is_admin={result['is_admin']}")
 
