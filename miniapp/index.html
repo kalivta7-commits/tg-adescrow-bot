@@ -69,6 +69,7 @@
             max-width: 480px;
             margin: 0 auto;
             padding: 12px;
+            width: 100%;
         }
 
         .header {
@@ -846,13 +847,24 @@
 
 
 
+        .leaderboard {
+            width: 100%;
+        }
+
+        .leaderboard-list {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            width: 100%;
+        }
+
         .leaderboard-row {
             display: flex;
             align-items: center;
             padding: 12px;
             border-radius: 10px;
-            margin-bottom: 10px;
             background: #1c2634;
+            min-width: 0;
         }
 
         .rank-badge {
@@ -873,6 +885,43 @@
         .leader-meta {
             font-size: 12px;
             opacity: 0.7;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                max-width: 1100px;
+                padding: 20px;
+            }
+
+            .nav {
+                gap: 12px;
+                padding: 10px;
+            }
+
+            .nav-btn {
+                padding: 16px 20px;
+                font-size: 14px;
+            }
+
+            .nav-btn .emoji {
+                font-size: 18px;
+            }
+
+            .leaderboard-list {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+
+            .leaderboard-row {
+                padding: 14px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .leaderboard-list {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 14px;
+            }
         }
 
         @media (max-width: 380px) {
@@ -1104,9 +1153,9 @@
             </div>
 
             <div class="panel" id="panel-leaderboard">
-                <div class="card">
+                <div class="card leaderboard">
                     <h2>🏆 Top Channels This Month</h2>
-                    <div id="leaderboardList"></div>
+                    <div id="leaderboardList" class="leaderboard-list"></div>
                 </div>
             </div>
         </div>
