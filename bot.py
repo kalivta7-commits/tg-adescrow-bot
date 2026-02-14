@@ -184,6 +184,7 @@ def init_database():
             bot_is_admin INTEGER DEFAULT 0,
             bot_can_post INTEGER DEFAULT 0,
             owner_ton_wallet TEXT,
+            owner_wallet TEXT,
             total_deals INTEGER DEFAULT 0,
             completed_deals INTEGER DEFAULT 0,
             verified_at TIMESTAMP,
@@ -297,6 +298,7 @@ def init_database():
         'ALTER TABLE channels ADD COLUMN verified_at TIMESTAMP',
         'ALTER TABLE channels ADD COLUMN public_link TEXT',
         'ALTER TABLE channels ADD COLUMN owner_ton_wallet TEXT',
+        'ALTER TABLE channels ADD COLUMN owner_wallet TEXT',
         'ALTER TABLE channels ADD COLUMN total_deals INTEGER DEFAULT 0',
         'ALTER TABLE channels ADD COLUMN completed_deals INTEGER DEFAULT 0',
         'ALTER TABLE deals ADD COLUMN advertiser_wallet TEXT',
@@ -704,7 +706,8 @@ def update_channel_verification(channel_id: int, verification: dict) -> bool:
 
 
 async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
-                                       category: str = 'general', price: float = 0) -> dict:
+                                       category: str = 'general', price: float = 0,
+                                       owner_wallet: str = None) -> dict:
     """
     Verify and register a new channel in one step.
     Returns result with channel data or error.
@@ -745,6 +748,8 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                         verified = 1,
                         bot_is_admin = 1,
                         bot_can_post = 1,
+                        owner_ton_wallet = COALESCE(?, owner_ton_wallet),
+                        owner_wallet = COALESCE(?, owner_wallet),
                         verified_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 ''', (
@@ -753,6 +758,8 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                     public_link,
                     verification['title'],
                     verification['subscribers'],
+                    owner_wallet,
+                    owner_wallet,
                     existing['id']
                 ))
                 conn.commit()
@@ -763,8 +770,8 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                 cursor.execute('''
                     INSERT INTO channels (
                         owner_id, telegram_channel_id, username, public_link, name, category, price,
-                        subscribers, verified, bot_is_admin, bot_can_post, verified_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, CURRENT_TIMESTAMP)
+                        subscribers, verified, bot_is_admin, bot_can_post, owner_ton_wallet, owner_wallet, verified_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, ?, ?, CURRENT_TIMESTAMP)
                 ''', (
                     owner_id,
                     verification['telegram_channel_id'],
@@ -773,7 +780,9 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                     verification['title'],
                     category,
                     price,
-                    verification['subscribers']
+                    verification['subscribers'],
+                    owner_wallet,
+                    owner_wallet
                 ))
                 conn.commit()
                 channel_id = cursor.lastrowid
@@ -792,6 +801,7 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
                 'category': category,
                 'price': price,
                 'subscribers': verification['subscribers'],
+                'owner_wallet': owner_wallet,
                 'verified': True,
                 'bot_is_admin': True,
                 'bot_can_post': True
@@ -1826,6 +1836,7 @@ def api_get_channels():
 
 
 @flask_app.route('/api/channels', methods=['POST'])
+@flask_app.route('/api/register-channel', methods=['POST'])
 @rate_limit()
 def api_create_channel():
     try:
@@ -1851,6 +1862,12 @@ def api_create_channel():
             owner_id = user['id']
 
         category = data.get('category', 'general')
+        owner_wallet = (data.get('owner_wallet') or '').strip()
+        if not owner_wallet or not owner_wallet.startswith('EQ'):
+            return jsonify({
+                "success": False,
+                "error": "Invalid wallet address"
+            }), 400
         allowed_categories = {'general', 'crypto', 'nft', 'gaming', 'finance', 'tech', 'Other'}
         if category not in allowed_categories:
             return json_response(False, error='invalid category', status=400)
@@ -1865,7 +1882,8 @@ def api_create_channel():
                 username,
                 owner_id,
                 category,
-                price
+                price,
+                owner_wallet
             )
         )
 
@@ -2951,7 +2969,7 @@ def api_release_escrow_funds(deal_id):
             cursor.execute('''
                 SELECT d.id, d.status, d.escrow_amount, d.channel_id, d.channel_owner_wallet,
                        w.id as wallet_id, w.address, w.encrypted_private_key, w.balance,
-                       c.owner_ton_wallet
+                       c.owner_wallet, c.owner_ton_wallet
                 FROM deals d
                 JOIN escrow_wallets w ON d.id = w.deal_id
                 LEFT JOIN channels c ON d.channel_id = c.id
@@ -2965,7 +2983,7 @@ def api_release_escrow_funds(deal_id):
             if row['status'] not in ['funded', 'posted', 'verified']:
                 return json_response(False, error=f"Cannot release from status '{row['status']}'. Must be funded, posted, or verified.", status=400)
 
-            dest_wallet = channel_owner_wallet or row['channel_owner_wallet'] or row['owner_ton_wallet']
+            dest_wallet = channel_owner_wallet or row['channel_owner_wallet'] or row['owner_wallet'] or row['owner_ton_wallet']
             if not dest_wallet:
                 return json_response(False, error='No destination wallet specified. Provide channel_owner_wallet in request.', status=400)
 

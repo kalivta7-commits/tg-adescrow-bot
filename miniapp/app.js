@@ -592,6 +592,7 @@
         var subs = parseInt(document.getElementById('chSubs').value) || 0;
         var views = parseInt(document.getElementById('chViews').value) || 0;
         var price = parseFloat(document.getElementById('chPrice').value) || 0;
+        var ownerWallet = document.getElementById('ownerWallet').value.trim();
 
         if (!handle) { toast('Please enter channel username', 'error'); return; }
         if (!handle.startsWith('@')) handle = '@' + handle;
@@ -601,6 +602,7 @@
         if (allowedCategories.indexOf(category) === -1) { toast('Invalid category selected', 'error'); return; }
         if (subs < 2) { toast('Minimum 100 subscribers required', 'error'); return; }
         if (price < 1) { toast('Minimum price is 1 TON', 'error'); return; }
+        if (!ownerWallet || !ownerWallet.startsWith('EQ')) { alert('Please enter valid TON wallet address'); return; }
 
         setLoading('btnRegister', true);
 
@@ -611,10 +613,11 @@
             category: category,
             subscribers: subs,
             avg_views: views || Math.floor(subs / 5),
-            price: price
+            price: price,
+            owner_wallet: ownerWallet
         };
 
-        apiPost('/api/channels', data).then(function (res) {
+        apiPost('/api/register-channel', data).then(function (res) {
             if (res.success) {
                 toast('Channel registered successfully', 'success');
                 clearChannelForm();
@@ -634,7 +637,7 @@
 
     // Clear channel form
     function clearChannelForm() {
-        ['chHandle', 'chName', 'chCategory', 'chSubs', 'chViews', 'chPrice'].forEach(function (id) {
+        ['chHandle', 'chName', 'chCategory', 'chSubs', 'chViews', 'chPrice', 'ownerWallet'].forEach(function (id) {
             document.getElementById(id).value = '';
         });
     }
