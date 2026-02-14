@@ -844,6 +844,37 @@
             color: #fff;
         }
 
+
+
+        .leaderboard-row {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            background: #1c2634;
+        }
+
+        .rank-badge {
+            width: 45px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .rank-1 { color: gold; }
+        .rank-2 { color: silver; }
+        .rank-3 { color: #cd7f32; }
+
+        .leader-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .leader-meta {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
         @media (max-width: 380px) {
             .nav-btn {
                 padding: 12px 8px;
@@ -889,6 +920,10 @@
                 <button class="nav-btn" data-tab="deals">
                     <span class="emoji">🤝</span>
                     <span>Deals</span>
+                </button>
+                <button class="nav-btn" data-tab="leaderboard" id="leaderboardTab">
+                    <span class="emoji">🏆</span>
+                    <span>Leaderboard</span>
                 </button>
             </div>
 
@@ -1066,6 +1101,13 @@
                     </div>
                     <div class="deal-list" id="dealList"></div>
                     <button class="btn btn-secondary" id="btnRefresh" style="margin-top:14px;">Refresh</button>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-leaderboard">
+                <div class="card">
+                    <h2>🏆 Top Channels This Month</h2>
+                    <div id="leaderboardList"></div>
                 </div>
             </div>
         </div>

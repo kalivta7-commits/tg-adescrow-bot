@@ -223,6 +223,10 @@
         } else {
             stopPolling();
         }
+
+        if (tab === 'leaderboard') {
+            loadLeaderboard();
+        }
     }
 
     // Start polling for deal updates
@@ -715,6 +719,63 @@
                 '</div>';
         });
         container.innerHTML = html;
+    }
+
+
+
+    function loadLeaderboard() {
+        var container = document.getElementById('leaderboardList');
+        if (!container) return;
+
+        container.innerHTML = '<div class="empty"><div class="empty-text">Loading leaderboard...</div></div>';
+
+        apiGet('/api/leaderboard/monthly')
+            .then(function (res) {
+                var leaders = safeArray(res && res.data && res.data.leaders);
+                if (!leaders.length) {
+                    container.innerHTML = '<div class="empty"><div class="empty-text">No completed deals this month yet.<br>Be the first to earn! 🚀</div></div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+                leaders.forEach(function (item) {
+                    var rank = toNumber(item.rank, 0);
+                    var rankClass = '';
+                    if (rank === 1) rankClass = 'rank-1';
+                    else if (rank === 2) rankClass = 'rank-2';
+                    else if (rank === 3) rankClass = 'rank-3';
+
+                    var row = document.createElement('div');
+                    row.className = 'leaderboard-row';
+
+                    row.innerHTML =
+                        '<div class="rank-badge ' + rankClass + '">' +
+                        (rank === 1 ? '👑 ' : '') +
+                        '#' + esc(rank) +
+                        '</div>' +
+                        '<div class="leader-info">' +
+                        '<div>@' + esc(toText(item.username, 'unknown')) + '</div>' +
+                        '<div class="leader-meta">' +
+                        esc(toText(item.total_earned, 0)) + ' TON • ' +
+                        esc(toText(item.completed_count, 0)) + ' deals • ⭐ ' +
+                        esc(toText(item.success_rate, 0)) + '%' +
+                        '</div>' +
+                        '</div>';
+
+                    row.style.cursor = 'pointer';
+                    row.addEventListener('click', function () {
+                        if (item.username) {
+                            window.open('https://t.me/' + String(item.username).replace('@', ''), '_blank');
+                        }
+                    });
+
+                    container.appendChild(row);
+                });
+            })
+            .catch(function (e) {
+                console.log('Error loading leaderboard:', e);
+                container.innerHTML = '<div class="empty"><div class="empty-text">Unable to load leaderboard right now.</div></div>';
+            });
     }
 
     // API helper - GET
