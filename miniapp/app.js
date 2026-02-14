@@ -326,12 +326,14 @@
             var channelSubs = formatNum(toNumber(channel.subscribers, 0));
             var channelViews = formatNum(toNumber(channel.avg_views, 0));
             var channelPrice = toNumber(channel.price, 0);
+            var channelPublicLink = toText(channel.public_link || '');
             var isSelected = State.selected.indexOf(channelId) !== -1;
             html += '<div class="channel-card' + (isSelected ? ' selected' : '') + '" data-id="' + esc(channelId) + '">' +
                 '<div class="channel-check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>' +
                 '<div class="channel-info">' +
                 '<div class="channel-name">' + esc(channelName) + '</div>' +
                 '<div class="channel-handle">' + esc(channelUser) + '</div>' +
+                (channelPublicLink ? '<div class="channel-link"><a href="' + esc(channelPublicLink) + '" target="_blank">🔗 View Channel</a></div>' : '') +
                 '<div class="channel-meta">' +
                 '<span class="meta-tag">' + esc(channelCategory) + '</span>' +
                 '<span class="meta-tag">' + esc(channelSubs) + ' subs</span>' +
