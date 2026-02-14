@@ -283,6 +283,8 @@ def init_database():
         'ALTER TABLE deals ADD COLUMN advertiser_wallet TEXT',
         'ALTER TABLE deals ADD COLUMN channel_owner_wallet TEXT',
         'ALTER TABLE deals ADD COLUMN message_id INTEGER',
+        'ALTER TABLE deals ADD COLUMN posted_message_id INTEGER',
+        'ALTER TABLE deals ADD COLUMN posted_chat_id INTEGER',
         'ALTER TABLE deals ADD COLUMN posted_at TIMESTAMP',
         'ALTER TABLE deals ADD COLUMN hold_hours INTEGER DEFAULT 24',
         'ALTER TABLE users ADD COLUMN ton_wallet TEXT',
@@ -796,6 +798,7 @@ class EscrowStatus(str, Enum):
     COMPLETED = "completed"
     REFUNDED = "refunded"
     CANCELLED = "cancelled"
+    DELETED = "deleted"
 
 
 # =============================================================================
@@ -808,6 +811,8 @@ class DealStateMachine:
     Ensures atomic, valid state changes with logging.
     """
 
+    TERMINAL_STATES = ['completed', 'cancelled', 'refunded', 'deleted']
+
     # Valid state transitions: current_state -> [allowed_next_states]
     TRANSITIONS = {
         'pending': ['accepted', 'cancelled'],
@@ -819,6 +824,7 @@ class DealStateMachine:
         'completed': [],
         'refunded': [],
         'cancelled': [],
+        'deleted': [],
     }
 
     STATE_LABELS = {
@@ -830,7 +836,8 @@ class DealStateMachine:
         'verified': 'Verified',
         'completed': 'Completed',
         'refunded': 'Refunded',
-        'cancelled': 'Cancelled'
+        'cancelled': 'Cancelled',
+        'deleted': 'Deleted'
     }
 
     STATE_STEPS = {
@@ -841,7 +848,8 @@ class DealStateMachine:
         'verified': 5,
         'completed': 6,
         'refunded': 0,
-        'cancelled': 0
+        'cancelled': 0,
+        'deleted': 0
     }
 
     @classmethod
@@ -855,7 +863,7 @@ class DealStateMachine:
 
     @classmethod
     def is_terminal(cls, state: str) -> bool:
-        return len(cls.TRANSITIONS.get(state, [])) == 0
+        return state in cls.TERMINAL_STATES
 
     @classmethod
     def get_step(cls, state: str) -> int:
@@ -1866,13 +1874,18 @@ def api_get_deals():
                 SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,
                        camp.advertiser_id, c.owner_id,
                        c.username as channel_handle, c.name as channel_name,
-                       camp.title as campaign_title
+                       camp.title as campaign_title,
+                       CASE
+                           WHEN c.owner_id = ? THEN 'owner'
+                           WHEN camp.advertiser_id = ? THEN 'advertiser'
+                           ELSE 'viewer'
+                       END AS role
                 FROM deals d
                 LEFT JOIN channels c ON d.channel_id = c.id
                 LEFT JOIN campaigns camp ON d.campaign_id = camp.id
                 WHERE camp.advertiser_id = ? OR c.owner_id = ?
                 ORDER BY d.created_at DESC
-            ''', (db_user_id, db_user_id))
+            ''', (db_user_id, db_user_id, db_user_id, db_user_id))
             rows = cursor.fetchall()
 
             deals = []
@@ -1889,6 +1902,7 @@ def api_get_deals():
                     'title': row['campaign_title'] or row['channel_name'] or f"Deal #{row['id']}",
                     'channel': row['channel_handle'],
                     'type': 'deal',
+                    'role': row['role'],
                     'step': DealStateMachine.get_step(state),
                     'is_terminal': DealStateMachine.is_terminal(state),
                     'allowed_transitions': DealStateMachine.get_allowed_transitions(state),
@@ -2939,9 +2953,14 @@ def api_post_now(deal_id):
                       now.isoformat(), result['message_id'], hold_hours, release_at.isoformat()))
 
                 cursor.execute('''
-                    UPDATE deals SET status = 'posted', message_id = ?, posted_at = ?
+                    UPDATE deals
+                    SET posted_message_id = ?, posted_chat_id = ?, status = 'posted'
                     WHERE id = ?
-                ''', (result['message_id'], now.isoformat(), deal_id))
+                ''', (
+                    result.get('message_id'),
+                    result.get('chat_id'),
+                    deal_id
+                ))
 
                 conn.commit()
 
@@ -2958,6 +2977,57 @@ def api_post_now(deal_id):
         logger.error(f"Error posting now: {e}")
         return json_response(False, error=str(e), status=500)
 
+
+
+
+@flask_app.route('/api/deal/delete_post', methods=['POST'])
+def api_delete_post():
+    try:
+        data = request.get_json() or {}
+        deal_id = int(data.get('deal_id'))
+        telegram_user_id = int(data.get('user_id'))
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT d.posted_message_id,
+                       d.posted_chat_id,
+                       u.telegram_id as owner_telegram_id
+                FROM deals d
+                JOIN channels c ON d.channel_id = c.id
+                JOIN users u ON c.owner_id = u.id
+                WHERE d.id = ?
+            """, (deal_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                return json_response(False, error="Deal not found", status=404)
+
+            if row['owner_telegram_id'] != telegram_user_id:
+                return json_response(False, error="Not authorized", status=403)
+
+            if not row['posted_message_id']:
+                return json_response(False, error="No post to delete", status=400)
+
+            run_async(
+                bot_instance.app.bot.delete_message(
+                    chat_id=row['posted_chat_id'],
+                    message_id=row['posted_message_id']
+                )
+            )
+
+            cursor.execute("""
+                UPDATE deals
+                SET status = 'deleted'
+                WHERE id = ?
+            """, (deal_id,))
+            conn.commit()
+
+        return json_response(True)
+
+    except Exception as e:
+        return json_response(False, error=str(e), status=500)
 
 @flask_app.route('/api/deal/<int:deal_id>/post/verify', methods=['GET'])
 @rate_limit()
