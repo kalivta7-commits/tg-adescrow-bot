@@ -568,7 +568,7 @@ async def verify_and_update_admin(bot, telegram_user_id: int, channel_id: int) -
 # CHANNEL VERIFICATION
 # =============================================================================
 
-async def verify_channel(bot, channel_username: str) -> dict:
+async def verify_channel(bot, channel_username: str, owner_id: int) -> dict:
     """
     Verify a Telegram channel for registration.
     Checks: bot is admin, bot can post, fetches stats.
@@ -616,9 +616,25 @@ async def verify_channel(bot, channel_username: str) -> dict:
                 result['error'] = f'Cannot access channel: {e}'
             return result
 
+        if getattr(chat, 'type', None) != 'channel':
+            result['error'] = 'Only public channels can be registered.'
+            return result
+
+        if not getattr(chat, 'username', None):
+            result['error'] = 'Private channel is not supported. Use a public channel username.'
+            return result
+
         result['telegram_channel_id'] = chat.id
+        result['username'] = f"@{chat.username}"
         result['title'] = chat.title
         result['description'] = chat.description
+
+        # Check if registering user is creator
+        user_member = await bot.get_chat_member(chat.id, owner_id)
+
+        if user_member.status != "creator":
+            result["error"] = "Only the channel owner (creator) can register this channel."
+            return result
 
         # Get subscriber count (member count for channels)
         try:
@@ -630,11 +646,11 @@ async def verify_channel(bot, channel_username: str) -> dict:
 
         # Check if bot is admin and can post
         try:
-            bot_member = await bot.get_chat_member(chat.id, bot.id)
+            bot_member = await bot.get_chat_member(chat.id, (await bot.get_me()).id)
             status = getattr(bot_member, 'status', None)
 
             if status not in ('administrator', 'creator'):
-                result['error'] = 'Bot is not an admin of this channel. Add bot as admin with "Post Messages" permission.'
+                result['error'] = 'Bot must be admin in the channel.'
                 return result
 
             result['bot_is_admin'] = True
@@ -712,7 +728,7 @@ async def verify_and_register_channel(bot, channel_username: str, owner_id: int,
     result = {'success': False, 'channel': None, 'error': None}
 
     # Verify the channel first
-    verification = await verify_channel(bot, channel_username)
+    verification = await verify_channel(bot, channel_username, owner_id)
 
     if not verification['success']:
         result['error'] = verification['error']
