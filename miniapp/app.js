@@ -182,20 +182,24 @@
             });
         });
         document.getElementById('btnRefresh').addEventListener('click', loadDeals);
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('deal-action-btn')) {
 
-        document.addEventListener('click', function (e) {
-            if (e.target.classList.contains('delete-post-btn')) {
                 var dealId = e.target.getAttribute('data-id');
+                var action = e.target.getAttribute('data-action');
 
-                apiPost('/api/deal/delete_post', {
+                apiPost('/api/deal/action', {
                     deal_id: dealId,
+                    action: action,
                     user_id: State.user.id
-                }).then(function (res) {
-                    if (res && res.success) {
+                }).then(function(res) {
+                    if (res.success) {
                         loadDeals();
                     } else {
-                        alert(res.error || 'Failed to delete');
+                        alert(res.error || 'Action failed');
                     }
+                }).catch(function(err) {
+                    alert((err && err.message) || 'Action failed');
                 });
             }
         });
@@ -647,24 +651,18 @@
                 if (isTerminal && step === 0) cls = 'terminal';
                 timeline += '<div class="timeline-step ' + cls + '"></div>';
             }
-
-            // Build action buttons for allowed transitions
+            // Build action buttons from backend-provided allowed transitions
             var actions = '';
-            if (allowedTransitions.length > 0 && !isTerminal) {
+            if (d.allowed_transitions && d.allowed_transitions.length > 0) {
                 actions = '<div class="deal-actions">';
-                allowedTransitions.forEach(function (nextState) {
-                    var btnClass = nextState === 'cancelled' || nextState === 'refunded' ? 'btn-danger' : 'btn-primary';
-                    actions += '<button class="btn-sm ' + btnClass + '" onclick="transitionDeal(' + d.id + ', \'' + nextState + '\')">' +
-                        nextState.charAt(0).toUpperCase() + nextState.slice(1) + '</button>';
+                d.allowed_transitions.forEach(function(action) {
+                    actions += '<button class="deal-action-btn" ';
+                    actions += 'data-id="' + d.id + '" ';
+                    actions += 'data-action="' + action + '">';
+                    actions += action.replace('_',' ').toUpperCase();
+                    actions += '</button>';
                 });
                 actions += '</div>';
-            }
-
-            var deleteButton = '';
-            if (status === 'posted' && d.role === 'owner') {
-                deleteButton += '<button class="delete-post-btn" data-id="' + d.id + '">';
-                deleteButton += '🗑 Delete Post';
-                deleteButton += '</button>';
             }
 
             html += '<div class="deal-card' + (isTerminal ? ' terminal' : '') + '" data-id="' + d.id + '">' +
@@ -677,30 +675,11 @@
                 '<span class="deal-channel">' + esc(d.channel || '') + '</span>' +
                 '<span class="deal-amount">' + (d.amount || d.escrow_amount || 0) + ' TON</span>' +
                 '</div>' +
-                deleteButton +
                 actions +
                 '</div>';
         });
         container.innerHTML = html;
     }
-
-    // Transition deal to new state
-    window.transitionDeal = function (dealId, newState) {
-        apiPost('/api/deal/' + dealId + '/transition', {
-            state: newState,
-            telegram_id: State.user.id
-        }).then(function (res) {
-            if (res.success) {
-                toast('Deal ' + res.transition, 'success');
-                loadDeals(); // Reload to reflect changes
-            } else {
-                toast(res.error || 'Transition failed', 'error');
-            }
-        }).catch(function (e) {
-            console.log('Transition error:', e);
-            toast('Error updating deal', 'error');
-        });
-    };
 
     // API helper - GET
     function apiGet(url) {

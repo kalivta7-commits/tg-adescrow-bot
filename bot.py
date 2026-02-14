@@ -874,6 +874,39 @@ class DealStateMachine:
         return cls.STATE_LABELS.get(state, state.title())
 
 
+DEAL_ACTION_TO_STATE = {
+    'fund': 'funded',
+    'cancel': 'cancelled',
+    'verify': 'verified',
+    'dispute': 'refunded',
+    'accept': 'accepted',
+    'reject': 'cancelled',
+    'mark_posted': 'posted',
+    'delete': 'deleted'
+}
+
+DEAL_STATE_TO_ACTION = {
+    'funded': 'fund',
+    'cancelled': 'cancel',
+    'verified': 'verify',
+    'refunded': 'dispute',
+    'accepted': 'accept',
+    'posted': 'mark_posted',
+    'deleted': 'delete'
+}
+
+
+def get_role_allowed_actions(state: str, role: str) -> List[str]:
+    all_transitions = DealStateMachine.get_allowed_transitions(state)
+    all_actions = [DEAL_STATE_TO_ACTION[t] for t in all_transitions if t in DEAL_STATE_TO_ACTION]
+
+    if role == 'advertiser':
+        return [t for t in all_actions if t in ['fund', 'cancel', 'verify', 'dispute']]
+    if role == 'owner':
+        return [t for t in all_actions if t in ['accept', 'reject', 'mark_posted', 'delete']]
+    return []
+
+
 def transition_deal_state(deal_id: int, new_state: str, actor_telegram_id: int = None) -> dict:
     """
     Atomically transition deal to new state.
@@ -1891,6 +1924,15 @@ def api_get_deals():
             deals = []
             for row in rows:
                 state = row['status']
+                if row['advertiser_id'] == db_user_id:
+                    role = 'advertiser'
+                elif row['owner_id'] == db_user_id:
+                    role = 'owner'
+                else:
+                    role = 'viewer'
+
+                allowed = get_role_allowed_actions(state, role)
+
                 deals.append({
                     'id': row['id'],
                     'campaign_id': row['campaign_id'],
@@ -1902,10 +1944,10 @@ def api_get_deals():
                     'title': row['campaign_title'] or row['channel_name'] or f"Deal #{row['id']}",
                     'channel': row['channel_handle'],
                     'type': 'deal',
-                    'role': row['role'],
+                    'role': role,
                     'step': DealStateMachine.get_step(state),
                     'is_terminal': DealStateMachine.is_terminal(state),
-                    'allowed_transitions': DealStateMachine.get_allowed_transitions(state),
+                    'allowed_transitions': allowed,
                     'created_at': row['created_at']
                 })
 
@@ -2310,6 +2352,97 @@ def api_release_escrow(deal_id):
         logger.error(f"Error releasing escrow: {e}")
         return json_response(False, error=str(e), status=500)
 
+
+
+
+@flask_app.route('/api/deal/action', methods=['POST'])
+@rate_limit()
+def api_deal_action():
+    try:
+        data = request.get_json() or {}
+
+        deal_id = data.get('deal_id')
+        action = data.get('action')
+        telegram_id = data.get('user_id')
+
+        if deal_id in (None, ''):
+            return json_response(False, error='deal_id is required', status=400)
+        if not action:
+            return json_response(False, error='action is required', status=400)
+        if telegram_id in (None, ''):
+            return json_response(False, error='user_id is required', status=400)
+
+        try:
+            deal_id = int(deal_id)
+        except (TypeError, ValueError):
+            return json_response(False, error='deal_id must be a valid integer', status=400)
+
+        try:
+            telegram_id = int(telegram_id)
+        except (TypeError, ValueError):
+            return json_response(False, error='user_id must be a valid telegram id integer', status=400)
+
+        target_state = DEAL_ACTION_TO_STATE.get(action)
+        if not target_state:
+            return json_response(False, error='Invalid action', status=400)
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM users WHERE telegram_id = ?', (telegram_id,))
+            user_row = cursor.fetchone()
+            if not user_row:
+                return json_response(False, error='User not found', status=404)
+            db_user_id = user_row['id']
+
+            cursor.execute('''
+                SELECT d.status, camp.advertiser_id, c.owner_id
+                FROM deals d
+                LEFT JOIN campaigns camp ON d.campaign_id = camp.id
+                LEFT JOIN channels c ON d.channel_id = c.id
+                WHERE d.id = ?
+            ''', (deal_id,))
+            deal_row = cursor.fetchone()
+            if not deal_row:
+                return json_response(False, error='Deal not found', status=404)
+
+            advertiser_id = deal_row['advertiser_id']
+            owner_id = deal_row['owner_id']
+            current_status = deal_row['status']
+
+        if advertiser_id == db_user_id:
+            role = 'advertiser'
+        elif owner_id == db_user_id:
+            role = 'owner'
+        else:
+            return json_response(False, error='Not authorized', status=403)
+
+        if action == 'fund' and role != 'advertiser':
+            return json_response(False, error='Not authorized', status=403)
+
+        if action in ['accept', 'reject', 'mark_posted', 'delete'] and role != 'owner':
+            return json_response(False, error='Not authorized', status=403)
+
+        if action in ['verify', 'cancel', 'dispute'] and role != 'advertiser':
+            return json_response(False, error='Not authorized', status=403)
+
+        allowed_actions = get_role_allowed_actions(current_status, role)
+        if action not in allowed_actions:
+            return json_response(False, error='Action not allowed in current state', status=409)
+
+        result = transition_deal_state(deal_id, target_state, telegram_id)
+        if not result['success']:
+            status_code = 409 if result.get('conflict') else 400
+            return json_response(False, error=result['error'], status=status_code)
+
+        return json_response(True, data={
+            'deal': result['deal'],
+            'old_status': result['old_state'],
+            'new_status': result['new_state']
+        })
+
+    except Exception as e:
+        logger.error(f"Error handling deal action: {e}")
+        return json_response(False, error=str(e), status=500)
 
 # -----------------------------------------------------------------------------
 # CHANNEL ADMIN MANAGEMENT API
