@@ -76,6 +76,7 @@ except Exception as e:
 # Constants
 # -----------------------------------------------------------------------------
 MIN_ESCROW_BALANCE = 0.05
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50MB
 
 # -----------------------------------------------------------------------------
 # Async helper
@@ -1677,8 +1678,8 @@ def api_upload_media():
         file.seek(0, os.SEEK_END)
         size = file.tell()
         file.seek(0)
-        if size > 10 * 1024 * 1024:
-            return json_response(False, error="File exceeds 10MB limit", status=400)
+        if size > MAX_UPLOAD_SIZE:
+            return json_response(False, error="File too large. Maximum size is 50MB.", status=400)
 
         filename = secure_filename((file.filename or '').lower())
         if not filename:

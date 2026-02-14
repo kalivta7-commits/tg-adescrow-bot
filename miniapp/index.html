@@ -211,6 +211,13 @@
             letter-spacing: 0.5px;
         }
 
+        .media-hint {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 4px;
+            display: block;
+        }
+
         .input,
         .select {
             width: 100%;
@@ -956,8 +963,9 @@
                                 placeholder="Write your ad copy here"></textarea>
                         </div>
                         <div class="field">
-                            <label class="label">Media (optional)</label>
+                            <label class="label">Media (Optional — Max 50MB, Image or Video)</label>
                             <input type="file" class="input" id="mediaUpload" accept="image/*,video/*">
+                            <small class="media-hint">Max 50MB • Supported: JPG, PNG, MP4</small>
                         </div>
                         <div class="row">
                             <div class="field suffix-box">
