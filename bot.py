@@ -603,31 +603,30 @@ async def verify_channel(bot, channel_username: str) -> dict:
             logger.warning(f"Could not get subscriber count: {e}")
             result['subscribers'] = 0
 
-        # Check if bot is admin
+        # Check if bot is admin and can post
         try:
             bot_member = await bot.get_chat_member(chat.id, bot.id)
+            status = getattr(bot_member, 'status', None)
 
-            if bot_member.status == 'administrator':
-                result['bot_is_admin'] = True
-                result['bot_can_post'] = getattr(bot_member, 'can_post_messages', False)
-
-                if not result['bot_can_post']:
-                    result['error'] = 'Bot is admin but cannot post messages. Enable "Post Messages" permission.'
-                    return result
-
-                result['verified'] = True
-                result['success'] = True
-
-            elif bot_member.status == 'creator':
-                # Bot is owner (unlikely but handle it)
-                result['bot_is_admin'] = True
-                result['bot_can_post'] = True
-                result['verified'] = True
-                result['success'] = True
-
-            else:
+            if status not in ('administrator', 'creator'):
                 result['error'] = 'Bot is not an admin of this channel. Add bot as admin with "Post Messages" permission.'
                 return result
+
+            result['bot_is_admin'] = True
+
+            # Creators can always post; administrators require explicit post permission.
+            if status == 'creator':
+                result['bot_can_post'] = True
+            else:
+                result['bot_can_post'] = bool(getattr(bot_member, 'can_post_messages', False))
+
+            if not result['bot_can_post']:
+                result['error'] = 'Bot is admin but cannot post messages. Enable "Post Messages" permission.'
+                return result
+
+            result['verified'] = True
+            result['success'] = True
+            return result
 
         except Exception as e:
             error_str = str(e).lower()
