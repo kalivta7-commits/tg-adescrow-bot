@@ -4,6 +4,7 @@ import os
 import sqlite3
 import threading
 import asyncio
+import time
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
@@ -35,9 +36,11 @@ logger = logging.getLogger(__name__)
 # Import TON escrow module (optional - graceful degradation if dependencies missing)
 try:
     import ton_escrow
+    from ton_escrow import sync_send_from_platform_wallet
     TON_ESCROW_AVAILABLE = True
 except ImportError as e:
     TON_ESCROW_AVAILABLE = False
+    sync_send_from_platform_wallet = None
     logging.warning(f"TON escrow module not available: {e}. Install tonsdk, cryptography, aiohttp.")
 
 # Import auto-poster module
@@ -979,9 +982,17 @@ def transition_deal_state(deal_id: int, new_state: str, actor_telegram_id: int =
                 return result
 
             # Optimistic update using current_state check
-            cursor.execute('''
-                UPDATE deals SET status = ? WHERE id = ? AND status = ?
-            ''', (new_state, deal_id, current_state))
+            if new_state in ['paid', 'funded']:
+                release_at = (datetime.utcnow() + timedelta(hours=24)).isoformat()
+                cursor.execute('''
+                    UPDATE deals
+                    SET status = ?, release_at = COALESCE(release_at, ?)
+                    WHERE id = ? AND status = ?
+                ''', (new_state, release_at, deal_id, current_state))
+            else:
+                cursor.execute('''
+                    UPDATE deals SET status = ? WHERE id = ? AND status = ?
+                ''', (new_state, deal_id, current_state))
 
             if cursor.rowcount == 0:
                 conn.rollback()
@@ -2532,6 +2543,48 @@ def api_release_escrow(deal_id):
 
 
 
+@flask_app.route('/api/admin/release/<deal_id>', methods=['POST'])
+def admin_release(deal_id):
+    try:
+        if not supabase:
+            return {"success": False, "error": "Supabase is not configured"}, 503
+
+        if not sync_send_from_platform_wallet:
+            return {"success": False, "error": "TON escrow module not available"}, 503
+
+        deal_resp = supabase.table("deals").select("*").eq("id", deal_id).single().execute()
+        if not deal_resp.data:
+            return {"success": False, "error": "Deal not found"}, 404
+
+        deal = deal_resp.data
+
+        if deal.get("status") not in ["paid", "funded"]:
+            return {"success": False, "error": "Deal not in paid state"}, 400
+
+        channel_resp = supabase.table("channels").select("owner_wallet").eq("id", deal["channel_id"]).single().execute()
+        if not channel_resp.data:
+            return {"success": False, "error": "Channel not found"}, 404
+
+        owner_wallet = channel_resp.data["owner_wallet"]
+        amount = float(deal.get("amount") or deal.get("escrow_amount") or 0)
+
+        result = sync_send_from_platform_wallet(owner_wallet, amount)
+
+        if not result["success"]:
+            return {"success": False, "error": result["error"]}, 500
+
+        supabase.table("deals").update({
+            "status": "released",
+            "released_at": datetime.utcnow().isoformat(),
+            "escrow_tx_hash": result["tx_hash"]
+        }).eq("id", deal_id).execute()
+
+        return {"success": True, "tx_hash": result["tx_hash"]}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}, 500
+
+
 
 @flask_app.route('/api/deal/action', methods=['POST'])
 @rate_limit()
@@ -2887,9 +2940,14 @@ def api_verify_escrow_deposit(deal_id):
 
             if deposit_info.get('funded'):
                 cursor.execute('''
-                    UPDATE deals SET status = 'funded', advertiser_wallet = ?
+                    UPDATE deals
+                    SET status = 'funded', advertiser_wallet = ?, release_at = COALESCE(release_at, ?)
                     WHERE id = ? AND status IN ('pending', 'accepted')
-                ''', (advertiser_wallet or deposit_info.get('from_address'), deal_id))
+                ''', (
+                    advertiser_wallet or deposit_info.get('from_address'),
+                    (datetime.utcnow() + timedelta(hours=24)).isoformat(),
+                    deal_id
+                ))
 
                 cursor.execute('''
                     INSERT OR IGNORE INTO escrow_transactions 
@@ -3416,6 +3474,58 @@ def api_cancel_scheduled_post(deal_id):
         logger.error(f"Error cancelling post: {e}")
         return json_response(False, error=str(e), status=500)
 
+def auto_release_worker():
+    while True:
+        try:
+            if not supabase or not sync_send_from_platform_wallet:
+                time.sleep(300)
+                continue
+
+            deals_resp = (
+                supabase.table("deals")
+                .select("*")
+                .in_("status", ["paid", "funded"])
+                .execute()
+            )
+
+            for deal in deals_resp.data or []:
+                if deal.get("release_at"):
+                    try:
+                        release_time = datetime.fromisoformat(deal["release_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                    except Exception:
+                        continue
+
+                    if datetime.utcnow() >= release_time:
+
+                        channel_resp = (
+                            supabase.table("channels")
+                            .select("owner_wallet")
+                            .eq("id", deal["channel_id"])
+                            .single()
+                            .execute()
+                        )
+
+                        if not channel_resp.data:
+                            continue
+
+                        owner_wallet = channel_resp.data["owner_wallet"]
+                        amount = float(deal.get("amount") or deal.get("escrow_amount") or 0)
+
+                        result = sync_send_from_platform_wallet(owner_wallet, amount)
+
+                        if result["success"]:
+                            supabase.table("deals").update({
+                                "status": "released",
+                                "released_at": datetime.utcnow().isoformat(),
+                                "escrow_tx_hash": result["tx_hash"]
+                            }).eq("id", deal["id"]).execute()
+
+        except Exception as e:
+            print("Auto release error:", e)
+
+        time.sleep(300)
+
+
 # =============================================================================
 # MAIN
 # =============================================================================
@@ -3439,6 +3549,10 @@ def main():
 
     if bot_instance is None:
         bot_instance = AdEscrowBot(TOKEN)
+
+    # Start automatic escrow release worker
+    threading.Thread(target=auto_release_worker, daemon=True).start()
+    logger.info("Auto-release worker started")
 
     # Start Flask in background
     flask_thread = threading.Thread(target=run_flask, daemon=True)
