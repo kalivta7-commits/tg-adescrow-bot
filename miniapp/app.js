@@ -390,8 +390,8 @@
             toast('Please enter advertisement text (min 10 characters)', 'error');
             return;
         }
-        if (budget < 10) {
-            toast('Minimum budget is 10 TON', 'error');
+        if (budget < 5) {
+            toast('Minimum budget is 5 TON', 'error');
             return;
         }
 
@@ -514,7 +514,7 @@
         if (!handle.startsWith('@')) handle = '@' + handle;
         if (!name) { toast('Please enter channel name', 'error'); return; }
         if (!category) { toast('Please select a category', 'error'); return; }
-        if (subs < 100) { toast('Minimum 100 subscribers required', 'error'); return; }
+        if (subs < 2) { toast('Minimum 100 subscribers required', 'error'); return; }
         if (price < 1) { toast('Minimum price is 1 TON', 'error'); return; }
 
         setLoading('btnRegister', true);
