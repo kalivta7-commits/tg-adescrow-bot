@@ -12,7 +12,9 @@ from contextlib import contextmanager
 from functools import wraps
 
 from dotenv import load_dotenv
+from supabase import create_client
 from flask import Flask, request, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     Application,
@@ -57,6 +59,18 @@ except ImportError as e:
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+supabase = None
+try:
+    if SUPABASE_URL and SUPABASE_KEY:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    else:
+        logger.warning("Supabase env vars missing; upload API disabled")
+except Exception as e:
+    logger.warning(f"Supabase client init failed: {e}")
 
 # -----------------------------------------------------------------------------
 # Constants
@@ -292,6 +306,8 @@ def init_database():
         'ALTER TABLE deals ADD COLUMN posted_at TIMESTAMP',
         'ALTER TABLE deals ADD COLUMN hold_hours INTEGER DEFAULT 24',
         'ALTER TABLE users ADD COLUMN ton_wallet TEXT',
+        'ALTER TABLE deals ADD COLUMN media_type TEXT',
+        'ALTER TABLE deals ADD COLUMN media_url TEXT',
     ]
 
     for migration in migrations:
@@ -1644,6 +1660,54 @@ def serve_static(filename):
     return send_from_directory(flask_app.static_folder, filename)
 
 
+@flask_app.route('/api/upload', methods=['POST'])
+@rate_limit()
+def api_upload_media():
+    try:
+        if supabase is None:
+            return json_response(False, error="Supabase is not configured", status=503)
+
+        if 'file' not in request.files:
+            return json_response(False, error="No file uploaded", status=400)
+
+        file = request.files['file']
+        if not file:
+            return json_response(False, error="Invalid file", status=400)
+
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        file.seek(0)
+        if size > 10 * 1024 * 1024:
+            return json_response(False, error="File exceeds 10MB limit", status=400)
+
+        filename = secure_filename((file.filename or '').lower())
+        if not filename:
+            return json_response(False, error="Invalid file", status=400)
+
+        if filename.endswith(('.png','.jpg','.jpeg','.webp','.gif')):
+            media_type = "photo"
+        elif filename.endswith(('.mp4','.mov','.avi','.mkv')):
+            media_type = "video"
+        else:
+            return json_response(False, error="Unsupported file type", status=400)
+
+        import uuid
+        unique_name = f"{uuid.uuid4()}_{filename}"
+        file_bytes = file.read()
+
+        response = supabase.storage.from_("ads").upload(unique_name, file_bytes, {"content-type": file.content_type})
+        if isinstance(response, dict) and response.get("error"):
+            return json_response(False, error=str(response["error"]), status=500)
+
+        public = supabase.storage.from_("ads").get_public_url(unique_name)
+        public_url = public.get("publicUrl") or public.get("public_url") or public.get("data") if isinstance(public, dict) else public
+
+        return json_response(True, data={"media_type": media_type, "media_url": public_url})
+
+    except Exception as e:
+        return json_response(False, error=str(e), status=500)
+
+
 # -----------------------------------------------------------------------------
 # AUTH API
 # -----------------------------------------------------------------------------
@@ -1927,6 +1991,7 @@ def api_get_deals():
 
             cursor.execute('''
                 SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,
+                       d.media_type, d.media_url,
                        camp.advertiser_id, c.owner_id,
                        c.username as channel_handle, c.name as channel_name,
                        camp.title as campaign_title,
@@ -1970,7 +2035,9 @@ def api_get_deals():
                     'step': DealStateMachine.get_step(state),
                     'is_terminal': DealStateMachine.is_terminal(state),
                     'allowed_transitions': allowed,
-                    'created_at': row['created_at']
+                    'created_at': row['created_at'],
+                    'media_type': row['media_type'],
+                    'media_url': row['media_url']
                 })
 
             return json_response(True, data={'deals': deals})
@@ -2003,6 +2070,8 @@ def api_create_deal():
         advertiser_telegram_id = data.get('user_id')
         memo = data.get('memo')
         amount_raw = data.get('amount')
+        media_type = data.get('media_type')
+        media_url = data.get('media_url')
 
         missing_fields = [
             field_name for field_name, value in {
@@ -2085,6 +2154,12 @@ def api_create_deal():
             deal_id = cursor.lastrowid
 
             cursor.execute('''
+                UPDATE deals
+                   SET media_type = ?, media_url = ?
+                 WHERE id = ?
+            ''', (media_type, media_url, deal_id))
+
+            cursor.execute('''
                 UPDATE channels
                 SET total_deals = COALESCE(total_deals, 0) + 1
                 WHERE id = ?
@@ -2092,6 +2167,7 @@ def api_create_deal():
 
             cursor.execute('''
                 SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,
+                       d.media_type, d.media_url,
                        c.username as channel_handle, c.name as channel_name,
                        camp.title as campaign_title
                 FROM deals d
@@ -2133,7 +2209,9 @@ def api_create_deal():
                 'step': DealStateMachine.get_step(deal_row['status']),
                 'is_terminal': DealStateMachine.is_terminal(deal_row['status']),
                 'allowed_transitions': DealStateMachine.get_allowed_transitions(deal_row['status']),
-                'created_at': deal_row['created_at']
+                'created_at': deal_row['created_at'],
+                'media_type': media_type,
+                'media_url': media_url
             }
         })
 

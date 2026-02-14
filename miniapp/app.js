@@ -405,8 +405,26 @@
         }
     }
 
+    async function uploadMedia(file) {
+        if (file.size > 10 * 1024 * 1024) {
+            alert("File exceeds 10MB limit");
+            return null;
+        }
+
+        var formData = new FormData();
+        formData.append("file", file);
+
+        var res = await fetch('/api/upload', {method:'POST',body:formData});
+        var data = await res.json();
+        if (!data.success) {
+            alert(data.error);
+            return null;
+        }
+        return data.data;
+    }
+
     // Submit advertising request
-    function submitRequest() {
+    async function submitRequest() {
         var titleEl = document.getElementById('campTitle');
         var textEl = document.getElementById('campText');
         var budgetEl = document.getElementById('campBudget');
@@ -440,34 +458,42 @@
 
         setLoading('btnSubmitRequest', true);
 
-        console.log('submit_request payload', {
-            action: 'submit_request',
-            campaign: {
+        try {
+            var campaignData = {
                 title: title,
                 text: text,
-                budget: budget,
-                channels: safeArray(State.selected)
-            }
-        });
+                budget: budget
+            };
 
-        // Create campaign via API
-        return apiPost('/api/campaign/create', {
-            user_id: State.userId,
-            title: title,
-            text: text,
-            budget: budget
-        }).then(function (res) {
-            var campaignData = safeObj((res && res.data && res.data.campaign) || (res && res.data));
-            if (!(res && res.success === true && campaignData && campaignData.id)) {
+            var fileInput = document.getElementById('mediaUpload');
+            if (fileInput && fileInput.files.length > 0) {
+                var upload = await uploadMedia(fileInput.files[0]);
+                if (!upload) {
+                    setLoading('btnSubmitRequest', false);
+                    return;
+                }
+
+                campaignData.media_type = upload.media_type;
+                campaignData.media_url = upload.media_url;
+            }
+
+            var res = await apiPost('/api/campaign/create', {
+                user_id: State.userId,
+                title: campaignData.title,
+                text: campaignData.text,
+                budget: campaignData.budget
+            });
+
+            var createdCampaign = safeObj((res && res.data && res.data.campaign) || (res && res.data));
+            if (!(res && res.success === true && createdCampaign && createdCampaign.id)) {
                 throw new Error(res && res.error ? res.error : 'Failed to create campaign');
             }
-            State.campaign = campaignData;
+            State.campaign = createdCampaign;
 
             var selected = safeArray(State.selected).filter(function (channelId) {
                 return channelId !== null && channelId !== undefined && channelId !== '';
             });
 
-            // Create deals for selected channels
             var dealPromises = selected.map(function (channelId) {
                 var channel = safeArray(State.channels).find(function (c) {
                     var item = safeObj(c);
@@ -480,11 +506,13 @@
                 }
 
                 return apiPost('/api/deal/create', {
-                    campaign_id: campaignData.id,
+                    campaign_id: createdCampaign.id,
                     user_id: State.user.id,
                     channel_id: channelId,
                     amount: amount,
-                    memo: 'Ad campaign escrow'
+                    memo: 'Ad campaign escrow',
+                    media_type: campaignData.media_type,
+                    media_url: campaignData.media_url
                 }).then(function (dealRes) {
                     if (!(dealRes && dealRes.success === true && dealRes.data)) {
                         throw new Error(dealRes && dealRes.error ? dealRes.error : 'Failed to create deal');
@@ -493,16 +521,15 @@
                 });
             });
 
-            return Promise.all(dealPromises);
-        }).then(function () {
+            await Promise.all(dealPromises);
             showConfirmation();
             toast('Request submitted successfully', 'success');
-        }).catch(function (e) {
+        } catch (e) {
             console.log('Error submitting request:', e);
             toast('Error submitting request: ' + (e && e.message ? e.message : 'Unknown error'), 'error');
-        }).finally(function () {
+        } finally {
             setLoading('btnSubmitRequest', false);
-        });
+        }
     }
 
     // Show confirmation screen
@@ -541,6 +568,8 @@
         document.getElementById('campTitle').value = '';
         document.getElementById('campText').value = '';
         document.getElementById('campBudget').value = '';
+        var mediaUpload = document.getElementById('mediaUpload');
+        if (mediaUpload) mediaUpload.value = '';
         document.getElementById('filterCategory').value = '';
         document.getElementById('filterSubs').value = '0';
         document.getElementById('filterPrice').value = '999';
@@ -673,6 +702,7 @@
                 '<div class="deal-title">' + esc(d.title || 'Deal #' + d.id) + '</div>' +
                 '<span class="badge badge-' + status + '">' + esc(label) + '</span>' +
                 '</div>' +
+                (d.media_url ? (d.media_type === 'photo' ? '<img src="' + esc(d.media_url) + '" class="deal-media">' : (d.media_type === 'video' ? '<video controls src="' + esc(d.media_url) + '" class="deal-media"></video>' : '')) : '') +
                 '<div class="deal-meta">' +
                 '<span class="deal-channel">' + esc(d.channel || '') + '</span>' +
                 '<span class="deal-amount">' + (d.amount || d.escrow_amount || 0) + ' TON</span>' +
