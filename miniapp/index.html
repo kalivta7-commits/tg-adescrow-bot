@@ -614,6 +614,12 @@
             color: var(--accent);
         }
 
+        .deal-media {
+            max-width: 100%;
+            max-height: 200px;
+            margin-bottom: 5px;
+        }
+
         .delete-post-btn {
             background: #ff4d4d;
             color: white;
@@ -948,6 +954,10 @@
                             <label class="label">Advertisement Text</label>
                             <textarea class="input textarea" id="campText"
                                 placeholder="Write your ad copy here"></textarea>
+                        </div>
+                        <div class="field">
+                            <label class="label">Media (optional)</label>
+                            <input type="file" class="input" id="mediaUpload" accept="image/*,video/*">
                         </div>
                         <div class="row">
                             <div class="field suffix-box">

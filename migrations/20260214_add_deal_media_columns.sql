@@ -1,0 +1,2 @@
+ALTER TABLE deals ADD COLUMN media_type TEXT;
+ALTER TABLE deals ADD COLUMN media_url TEXT;
