@@ -170,7 +170,14 @@ def get_posts_for_verification() -> List[dict]:
 # TELEGRAM POSTING
 # =============================================================================
 
-async def post_to_channel(bot, channel_id: int, text: str) -> Dict[str, Any]:
+async def post_to_channel(
+    bot,
+    channel_id: int,
+    text: str,
+    channel_username: Optional[str] = None,
+    media_type: Optional[str] = None,
+    media: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Post message to Telegram channel.
     
@@ -178,6 +185,9 @@ async def post_to_channel(bot, channel_id: int, text: str) -> Dict[str, Any]:
         bot: Telegram bot instance
         channel_id: Telegram channel ID (numeric)
         text: Message text
+        channel_username: Public channel username from channels.username
+        media_type: Optional media type ('image'/'photo' or 'video')
+        media: Optional Telegram file_id or URL for media
     
     Returns:
         dict with 'success', 'message_id', 'error'
@@ -185,11 +195,34 @@ async def post_to_channel(bot, channel_id: int, text: str) -> Dict[str, Any]:
     result = {'success': False, 'message_id': None, 'error': None}
     
     try:
-        message = await bot.send_message(
-            chat_id=channel_id,
-            text=text,
-            parse_mode='HTML'
-        )
+        channel_username = (channel_username or '').strip().lstrip('@')
+        final_text = text
+
+        if channel_username:
+            final_text = f"{text}\n\n📢 Channel: https://t.me/{channel_username}"
+
+        normalized_media_type = (media_type or '').lower()
+
+        if normalized_media_type in ('image', 'photo') and media:
+            message = await bot.send_photo(
+                chat_id=channel_id,
+                photo=media,
+                caption=final_text,
+                parse_mode='Markdown'
+            )
+        elif normalized_media_type == 'video' and media:
+            message = await bot.send_video(
+                chat_id=channel_id,
+                video=media,
+                caption=final_text,
+                parse_mode='Markdown'
+            )
+        else:
+            message = await bot.send_message(
+                chat_id=channel_id,
+                text=final_text,
+                parse_mode='Markdown'
+            )
         
         result['success'] = True
         result['message_id'] = message.message_id
@@ -392,7 +425,14 @@ class PostScheduler:
                 
                 # Post to channel
                 bot = self.bot_app.bot
-                result = await post_to_channel(bot, channel_id, post['ad_text'])
+                result = await post_to_channel(
+                    bot,
+                    channel_id,
+                    post['ad_text'],
+                    channel_username=post.get('channel_handle'),
+                    media_type=post.get('media_type'),
+                    media=post.get('media') or post.get('media_file_id') or post.get('media_url')
+                )
                 
                 if result['success']:
                     now = datetime.now()
