@@ -251,7 +251,16 @@
             return;
         }
 
-        apiGet('/api/deals?user_id=' + encodeURIComponent(State.user.id))
+        var telegramUserId = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user
+            ? window.Telegram.WebApp.initDataUnsafe.user.id
+            : 0;
+        var telegramId = Number(telegramUserId);
+        if (!Number.isFinite(telegramId) || telegramId <= 0) {
+            toast('Telegram authentication failed', 'error');
+            return;
+        }
+
+        apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
             .then(function (res) {
                 var deals = safeArray(res && res.data && res.data.deals);
                 if (res && res.success === true && deals.length >= 0) {
@@ -694,7 +703,18 @@
             return;
         }
 
-        apiGet('/api/deals?user_id=' + encodeURIComponent(State.user.id))
+        var telegramUserId = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user
+            ? window.Telegram.WebApp.initDataUnsafe.user.id
+            : 0;
+        var telegramId = Number(telegramUserId);
+        if (!Number.isFinite(telegramId) || telegramId <= 0) {
+            toast('Telegram authentication failed', 'error');
+            State.deals = [];
+            renderDeals();
+            return;
+        }
+
+        apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
             .then(function (res) {
                 State.deals = res && res.success === true ? safeArray(res && res.data && res.data.deals) : [];
                 renderDeals();
