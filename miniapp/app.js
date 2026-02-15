@@ -505,6 +505,8 @@
                 return Number.isFinite(channelId) && channelId !== 0;
             });
 
+            const telegramId = window.Telegram.WebApp.initDataUnsafe.user.id;
+
             var dealPromises = selected.map(function (channelId) {
                 if (!channelId || Number.isNaN(channelId)) {
                     throw new Error('Invalid channel_id selected: ' + channelId);
@@ -521,19 +523,16 @@
                 }
 
                 var dealPayload = {
-                    campaign_id: createdCampaign.id,
-                    user_id: State.user.id,
+                    campaign_id: Number(createdCampaign.id),
                     channel_id: Number(channelId),
-                    amount: Number(amount),
-                    memo: 'Ad campaign escrow',
-                    media_type: campaignData.media_type,
-                    media_url: campaignData.media_url
+                    telegram_id: Number(telegramId),
+                    amount: Number(budget)
                 };
                 console.log('Deal payload:', {
-                    campaign_id: createdCampaign.id,
-                    user_id: State.user.id,
+                    campaign_id: Number(createdCampaign.id),
                     channel_id: Number(channelId),
-                    amount: Number(amount)
+                    telegram_id: Number(telegramId),
+                    amount: Number(budget)
                 });
 
                 return apiPost('/api/deal/create', dealPayload).then(function (dealRes) {
