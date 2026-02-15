@@ -262,7 +262,15 @@
 
         apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
             .then(function (res) {
-                var deals = safeArray(res && res.data && res.data.deals);
+                var deals = [];
+
+                if (Array.isArray(res)) {
+                    deals = res;
+                } else if (res && res.success === true && res.data && Array.isArray(res.data.deals)) {
+                    deals = res.data.deals;
+                }
+
+                deals = safeArray(deals);
                 if (res && res.success === true && deals.length >= 0) {
                     // Create hash to detect changes
                     var newHash = JSON.stringify(deals.map(function (d) {
@@ -716,7 +724,15 @@
 
         apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
             .then(function (res) {
-                State.deals = res && res.success === true ? safeArray(res && res.data && res.data.deals) : [];
+                var deals = [];
+
+                if (Array.isArray(res)) {
+                    deals = res;
+                } else if (res && res.success === true && res.data && Array.isArray(res.data.deals)) {
+                    deals = res.data.deals;
+                }
+
+                State.deals = safeArray(deals);
                 renderDeals();
             })
             .catch(function (e) {
