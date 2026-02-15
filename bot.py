@@ -3466,7 +3466,7 @@ def auto_release_worker():
             deals_resp = (
                 supabase.table("deals")
                 .select("*")
-                .in_("status", ["paid", "ad_posted"])
+                .in_("status", ["waiting_payment", "paid", "ad_posted"])
                 .execute()
             )
 
