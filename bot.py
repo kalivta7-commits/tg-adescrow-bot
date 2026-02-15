@@ -2177,10 +2177,29 @@ def api_create_deal():
             return json_response(False, error='buyer_id must be greater than 0', status=400)
         if amount <= 0:
             return json_response(False, error='amount must be greater than 0', status=400)
+        try:
+            channel_row = (
+                supabase.table("channels")
+                .select("id")
+                .eq("telegram_channel_id", channel_id)
+                .single()
+                .execute()
+            )
+        except Exception as channel_lookup_error:
+            logger.error(
+                f"Failed to resolve channel UUID for telegram_channel_id={channel_id}: {channel_lookup_error}"
+            )
+            return json_response(False, error='Failed to resolve channel', status=500)
+
+        channel_data = channel_row.data or {}
+        channel_uuid = channel_data.get('id')
+        if not channel_uuid:
+            return json_response(False, error='Channel not found', status=404)
+
         escrow_address = os.getenv('ESCROW_WALLET_ADDRESS')
         deal_payload = {
             'campaign_id': campaign_id,
-            'channel_id': channel_id,
+            'channel_id': channel_uuid,
             'buyer_id': buyer_id,
             'amount': amount,
             'status': 'waiting_payment',
