@@ -345,9 +345,10 @@
         channels.forEach(function (ch, index) {
             var channel = safeObj(ch);
             var telegramChannelId = toNumber(channel.telegram_channel_id, NaN);
-            var channelId = Number.isNaN(telegramChannelId)
-                ? ('idx-' + index)
-                : telegramChannelId;
+            if (Number.isNaN(telegramChannelId)) {
+                return;
+            }
+            var channelId = Number(telegramChannelId);
             var channelName = toText(channel.name || channel.username || 'Unknown channel');
             var channelUser = toText(channel.username || '');
             var channelCategory = capitalize(toText(channel.category || 'general'));
@@ -382,14 +383,13 @@
         container.querySelectorAll('.channel-card').forEach(function (card) {
             card.addEventListener('click', function () {
                 var rawId = this.dataset ? this.dataset.id : null;
-                var parsedId = parseInt(rawId, 10);
-                var id = Number.isNaN(parsedId) ? rawId : parsedId;
-                if (id === null || id === undefined || id === '') {
+                var id = Number(rawId);
+                if (!Number.isFinite(id)) {
                     return;
                 }
                 var idx = State.selected.indexOf(id);
                 if (idx === -1) {
-                    State.selected.push(id);
+                    State.selected.push(Number(id));
                     this.classList.add('selected');
                 } else {
                     State.selected.splice(idx, 1);
@@ -499,11 +499,17 @@
             }
             State.campaign = createdCampaign;
 
-            var selected = safeArray(State.selected).filter(function (channelId) {
-                return channelId !== null && channelId !== undefined && channelId !== '';
+            var selected = safeArray(State.selected).map(function (channelId) {
+                return Number(channelId);
+            }).filter(function (channelId) {
+                return Number.isFinite(channelId) && channelId !== 0;
             });
 
             var dealPromises = selected.map(function (channelId) {
+                if (!channelId || Number.isNaN(channelId)) {
+                    throw new Error('Invalid channel_id selected: ' + channelId);
+                }
+
                 var channel = safeArray(State.channels).find(function (c) {
                     var item = safeObj(c);
                     return toNumber(item.telegram_channel_id, NaN) == channelId;
@@ -514,15 +520,18 @@
                     throw new Error('Invalid channel amount for channel #' + channelId);
                 }
 
-                return apiPost('/api/deal/create', {
+                var dealPayload = {
                     campaign_id: createdCampaign.id,
                     user_id: State.user.id,
-                    channel_id: channelId,
+                    channel_id: Number(channelId),
                     amount: amount,
                     memo: 'Ad campaign escrow',
                     media_type: campaignData.media_type,
                     media_url: campaignData.media_url
-                }).then(function (dealRes) {
+                };
+                console.log('[DealCreate] Payload:', dealPayload);
+
+                return apiPost('/api/deal/create', dealPayload).then(function (dealRes) {
                     if (!(dealRes && dealRes.success === true && dealRes.data)) {
                         throw new Error(dealRes && dealRes.error ? dealRes.error : 'Failed to create deal');
                     }

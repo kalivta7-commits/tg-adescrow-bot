@@ -2128,6 +2128,7 @@ def api_create_deal():
 
     try:
         data = request.get_json() or {}
+        logger.info(f"Incoming deal payload: {data}")
 
         if supabase is None:
             return json_response(False, error='Supabase is not configured', status=503)
@@ -2160,7 +2161,7 @@ def api_create_deal():
             return json_response(False, error='campaign_id must be a valid integer', status=400)
 
         try:
-            channel_id = int(channel_id)
+            channel_id = int(data.get('channel_id'))
         except (TypeError, ValueError):
             return json_response(False, error='channel_id must be a valid integer', status=400)
 
@@ -2171,7 +2172,7 @@ def api_create_deal():
 
         if campaign_id <= 0:
             return json_response(False, error='campaign_id is required', status=400)
-        if channel_id <= 0:
+        if channel_id == 0:
             return json_response(False, error='channel_id is required', status=400)
         if buyer_id <= 0:
             return json_response(False, error='buyer_id must be greater than 0', status=400)
