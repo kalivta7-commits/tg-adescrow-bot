@@ -1909,7 +1909,6 @@ def api_create_deal():
                 'channel_id': channel_id,
                 'telegram_id': buyer_telegram_id,
                 'amount': amount_raw,
-                'message': message,
             }.items() if value in (None, '')
         ]
         if missing_fields:
@@ -1960,11 +1959,10 @@ def api_create_deal():
             )
             return json_response(False, error='Failed to resolve user', status=500)
 
-        user_rows = buyer_lookup.data or []
-        if not user_rows:
+        if not buyer_lookup.data:
             return jsonify({'error': 'User not registered'}), 404
 
-        buyer_id = user_rows[0].get('id')
+        buyer_id = buyer_lookup.data[0]['id']
         if not isinstance(buyer_id, int):
             logger.error(
                 "Resolved buyer_id has invalid type for telegram_id=%s. buyer_id=%s",
