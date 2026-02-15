@@ -641,12 +641,25 @@
             owner_wallet: ownerWallet
         };
 
-        fetch('/api/register-channel', {
+        var authPayload = {
+            telegram_id: State.user.id,
+            username: toText(State.user && State.user.username, '')
+        };
+
+        fetch('/api/auth', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(authPayload)
+        }).then(function () {
+            return fetch('/api/register-channel', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
         }).then(function (res) {
             return res.json();
         }).then(function (json) {
