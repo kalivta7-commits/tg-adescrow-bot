@@ -2025,47 +2025,19 @@ def api_create_deal():
             return json_response(False, error='Channel not found', status=404)
 
         escrow_address = os.getenv('ESCROW_WALLET_ADDRESS')
-        deal_payload = {
-            'campaign_id': campaign_id,
-            'channel_id': channel_uuid,
-            'buyer_id': buyer_id,
-            'amount': amount,
-            'status': 'waiting_payment',
-            'escrow_address': escrow_address
-        }
+        data = request.json
+        telegram_id = data.get("telegram_id")
+        channel_id = data.get("channel_id")
 
-        try:
-            insert_resp = supabase.table('deals').insert(deal_payload).execute()
-        except Exception as insert_error:
-            logger.error(f"Supabase deal insert exception. Payload={deal_payload}. Error={insert_error}")
-            return json_response(False, error='Failed to create deal in Supabase', status=500)
+        res = supabase.table("deals").insert({
+            "buyer_id": str(telegram_id),
+            "channel_id": channel_id,
+            "amount": amount,
+            "status": "waiting_payment",
+            "escrow_address": escrow_address
+        }).execute()
 
-        inserted_rows = insert_resp.data or []
-        if not inserted_rows:
-            logger.error(f"Supabase deal insert returned no data. Payload={deal_payload}. Response={insert_resp}")
-            return json_response(False, error='Failed to create deal in Supabase', status=500)
-
-        deal_row = inserted_rows[0]
-        deal_id = deal_row.get('id')
-
-        logger.info(f"API: Created Supabase deal {deal_id}")
-
-        if bot_instance is not None and bot_instance.application is not None and NOTIFICATIONS_AVAILABLE:
-            dispatch_background_async(
-                send_deal_notification(
-                    bot_instance.application.bot,
-                    deal_id,
-                    'created',
-                    {'memo': message or ''}
-                ),
-                task_name=f"deal-notify-{deal_id}-created"
-            )
-
-        return json_response(True, data={
-            'status': deal_row.get('status', 'waiting_payment'),
-            'deal_id': deal_id,
-            'deal': deal_row
-        })
+        return jsonify(res.data), 201
 
     except Exception as e:
         logger.error(f"Error creating deal: {e}")
