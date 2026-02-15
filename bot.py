@@ -149,12 +149,12 @@ def get_user_id(telegram_id: int) -> Optional[int]:
     """Get database user_id from telegram_id, creating user if not exists."""
     try:
         # Check if user exists
-        res = supabase.table("users").select("id").eq("telegram_id", telegram_id).execute()
+        res = supabase.table("app_users").select("id").eq("telegram_id", telegram_id).execute()
         if res.data:
             return res.data[0]['id']
         
         # Auto-register
-        res = supabase.table("users").insert({"telegram_id": telegram_id, "role": "user"}).execute()
+        res = supabase.table("app_users").insert({"telegram_id": telegram_id, "role": "user"}).execute()
         if res.data:
             return res.data[0]['id']
             
@@ -270,11 +270,11 @@ def get_channel_admins(channel_id: int) -> List[dict]:
     """Get all admins for a channel"""
     try:
         # Join users to get telegram_id
-        res = supabase.table("channel_admins").select("user_id, role, verified_at, users(telegram_id)").eq("channel_id", channel_id).execute()
+        res = supabase.table("channel_admins").select("user_id, role, verified_at, app_users(telegram_id)").eq("channel_id", channel_id).execute()
         
         admins = []
         for row in (res.data or []):
-            user_data = row.get('users') or {}
+            user_data = row.get('app_users') or {}
             admins.append({
                 "user_id": row['user_id'],
                 "role": row['role'],
@@ -1487,12 +1487,16 @@ def api_auth():
             return json_response(False, error='telegram_id is required', status=400)
 
         # Check if user exists
-        user_resp = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
+        user_resp = supabase.table("app_users").select("*").eq("telegram_id", telegram_id).execute()
         if user_resp.data:
             user = user_resp.data[0]
         else:
             # Create new user
-            insert_resp = supabase.table("users").insert({"telegram_id": telegram_id, "role": "user"}).execute()
+            insert_resp = supabase.table("app_users").insert({
+                "telegram_id": telegram_id,
+                "username": data.get('username'),
+                "role": "user"
+            }).execute()
             if insert_resp.data:
                 user = insert_resp.data[0]
                 logger.info(f"API: Auto-registered user {telegram_id}")
@@ -1695,7 +1699,7 @@ def api_create_campaign():
             return json_response(False, error='Database not configured', status=503)
 
         # Check if user exists
-        user_resp = supabase.table("users").select("id").eq("id", advertiser_id).execute()
+        user_resp = supabase.table("app_users").select("id").eq("id", advertiser_id).execute()
         if not user_resp.data:
             return jsonify({'success': False, 'error': 'user_id: user not found'}), 404
 
@@ -2334,7 +2338,7 @@ def api_deal_action():
 
         # 1. Get User ID
         try:
-            user_res = supabase.table("users").select("id").eq("telegram_id", telegram_id).execute()
+            user_res = supabase.table("app_users").select("id").eq("telegram_id", telegram_id).execute()
             if not user_res.data:
                  return json_response(False, error='User not found', status=404)
             db_user_id = user_res.data[0]['id']
@@ -3122,7 +3126,7 @@ def api_delete_post():
 
         # Get deal with channel and owner info
         deal_resp = supabase.table("deals").select(
-            "posted_message_id, posted_chat_id, channel_id, channels(owner_id, users(telegram_id))"
+            "posted_message_id, posted_chat_id, channel_id, channels(owner_id, app_users(telegram_id))"
         ).eq("id", deal_id).execute()
 
         if not deal_resp.data:
@@ -3130,7 +3134,7 @@ def api_delete_post():
 
         deal = deal_resp.data[0]
         channel = deal.get('channels') or {}
-        owner = channel.get('users') or {}
+        owner = channel.get('app_users') or {}
         owner_telegram_id = owner.get('telegram_id')
 
         if owner_telegram_id != telegram_user_id:
@@ -3301,7 +3305,7 @@ def auto_release_worker():
 
                         if not buyer_wallet:
                             buyer_resp = (
-                                supabase.table("users")
+                                supabase.table("app_users")
                                 .select("ton_wallet")
                                 .eq("id", deal.get("advertiser_id"))
                                 .single()

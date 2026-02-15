@@ -399,13 +399,13 @@ def get_deal_participants(deal_id: int) -> Dict[str, Optional[int]]:
             
         # Get advertiser telegram_id
         if campaign_adv_id:
-            user_resp = supabase.table("users").select("telegram_id").eq("id", campaign_adv_id).single().execute()
+            user_resp = supabase.table("app_users").select("telegram_id").eq("id", campaign_adv_id).single().execute()
             if user_resp.data:
                 result['advertiser_telegram_id'] = user_resp.data['telegram_id']
                 
         # Get channel owner telegram_id
         if channel_owner_id:
-            user_resp = supabase.table("users").select("telegram_id").eq("id", channel_owner_id).single().execute()
+            user_resp = supabase.table("app_users").select("telegram_id").eq("id", channel_owner_id).single().execute()
             if user_resp.data:
                 result['channel_owner_telegram_id'] = user_resp.data['telegram_id']
         
