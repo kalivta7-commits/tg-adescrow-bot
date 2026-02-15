@@ -1899,7 +1899,7 @@ def api_create_deal():
 
         campaign_id = data.get('campaign_id')
         channel_id = data.get('channel_id')
-        buyer_telegram_id = data.get('telegram_id', data.get('user_id', data.get('buyer_id')))
+        buyer_telegram_id = data.get('telegram_id')
         memo = data.get('memo')
         amount_raw = data.get('amount')
 
@@ -1961,7 +1961,7 @@ def api_create_deal():
 
         user_rows = buyer_lookup.data or []
         if not user_rows:
-            return jsonify({'error': 'User not registered'}), 404
+            return jsonify({'error': 'User not registered'}), 400
 
         buyer_id = user_rows[0].get('id')
         if not isinstance(buyer_id, int):
