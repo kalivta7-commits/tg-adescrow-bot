@@ -1760,23 +1760,25 @@ def api_create_campaign():
 @rate_limit()
 def api_get_deals():
     try:
-        telegram_id_raw = request.args.get("telegram_id")
-
-        if not telegram_id_raw:
-            return json_response(False, error="telegram_id is required", status=400)
-
         if supabase is None:
             return json_response(False, error='Supabase is not configured', status=503)
 
+        telegram_id = request.args.get("telegram_id")
+
+        # DEBUG MODE - return all deals if no telegram_id
+        if not telegram_id:
+            res = supabase.table("deals").select("*").execute()
+            return jsonify(res.data), 200
+
         try:
-            telegram_id = int(telegram_id_raw)
+            telegram_id_int = int(telegram_id)
         except (TypeError, ValueError):
             return json_response(False, error="telegram_id must be a valid integer", status=400)
 
         user_lookup = (
             supabase.table("app_users")
             .select("id")
-            .eq("telegram_id", telegram_id)
+            .eq("telegram_id", telegram_id_int)
             .single()
             .execute()
         )
@@ -1792,7 +1794,7 @@ def api_get_deals():
                 id, amount, status, created_at,
                 campaign_id,
                 channel_id
-            """).eq("buyer_id", user_id).execute()
+            """).eq("buyer_id", str(telegram_id)).execute()
 
             # 2. Find channels owned by user
             owned_channels = (
