@@ -2029,10 +2029,23 @@ def api_create_deal():
         escrow_address = os.getenv('ESCROW_WALLET_ADDRESS')
         data = request.json
         telegram_id = data.get("telegram_id")
+
+        # Get user UUID from app_users
+        user_lookup = supabase.table("app_users") \
+            .select("id") \
+            .eq("telegram_id", int(telegram_id)) \
+            .single() \
+            .execute()
+
+        if not user_lookup.data:
+            return jsonify({"error": "User not registered"}), 404
+
+        user_id = user_lookup.data["id"]
+
         channel_id = data.get("channel_id")
 
         res = supabase.table("deals").insert({
-            "buyer_id": str(telegram_id),
+            "buyer_id": user_id,
             "channel_id": channel_id,
             "amount": amount,
             "status": "waiting_payment",
