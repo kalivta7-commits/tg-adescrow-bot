@@ -1800,7 +1800,7 @@ def api_get_deals():
                 id, amount, status, created_at,
                 campaign_id,
                 channel_id
-            """).eq("channels.owner_id", user_id).execute()
+            """).eq("seller_id", user_id).execute()
         except Exception as e:
             logger.error(f"Error querying deals for user_id={user_id}: {e}")
             return json_response(False, error=f"deals_query_failed: {str(e)}", status=500)
