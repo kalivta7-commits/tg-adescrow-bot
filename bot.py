@@ -2010,6 +2010,7 @@ def api_create_campaign():
 def api_get_deals():
     try:
         user_id_raw = request.args.get('user_id')
+
         if user_id_raw is None:
             return json_response(False, error='user_id (telegram id) is required', status=400)
 
@@ -2022,9 +2023,11 @@ def api_get_deals():
             return json_response(False, error='user_id must be a valid telegram id integer', status=400)
 
         deal_statuses = ["waiting_payment", "paid", "ad_posted"]
-        logger.info(f"[GET /api/deals] resolved user_id={user_id} from raw={user_id_raw}")
 
-        buyer_deals_resp = (
+        # -------------------------
+        # 1️⃣ Buyer deals
+        # -------------------------
+        buyer_resp = (
             supabase.table("deals")
             .select("*")
             .eq("buyer_id", user_id)
@@ -2032,33 +2035,54 @@ def api_get_deals():
             .execute()
         )
 
-        buyer_deals = buyer_deals_resp.data or []
+        buyer_deals = buyer_resp.data or []
 
+        # -------------------------
+        # 2️⃣ Owner channel IDs
+        # -------------------------
         channels_resp = (
             supabase.table("channels")
             .select("id")
             .eq("owner_id", user_id)
             .execute()
         )
-        user_channel_ids = [channel["id"] for channel in (channels_resp.data or []) if channel.get("id") is not None]
-        logger.info(f"[GET /api/deals] user_id={user_id} channel_ids={user_channel_ids}")
 
+        user_channel_ids = [
+            ch["id"] for ch in (channels_resp.data or [])
+            if ch.get("id") is not None
+        ]
+
+        # -------------------------
+        # 3️⃣ Deals for owned channels
+        # -------------------------
         channel_deals = []
+
         if user_channel_ids:
-            channel_deals_resp = (
+            channel_resp = (
                 supabase.table("deals")
                 .select("*")
                 .in_("channel_id", user_channel_ids)
                 .in_("status", deal_statuses)
                 .execute()
             )
-            channel_deals = channel_deals_resp.data or []
 
-        deals_map = {deal["id"]: deal for deal in buyer_deals}
+            channel_deals = channel_resp.data or []
+
+        # -------------------------
+        # 4️⃣ Safe merge + deduplicate
+        # -------------------------
+        deals_map = {}
+
+        for deal in buyer_deals:
+            if deal.get("id"):
+                deals_map[deal["id"]] = deal
+
         for deal in channel_deals:
-            deals_map.setdefault(deal["id"], deal)
+            if deal.get("id") and deal["id"] not in deals_map:
+                deals_map[deal["id"]] = deal
 
         deals = list(deals_map.values())
+
         return json_response(True, data={'deals': deals})
 
     except Exception as e:
