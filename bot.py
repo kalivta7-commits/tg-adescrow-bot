@@ -1899,7 +1899,7 @@ def api_create_deal():
 
         campaign_id = data.get('campaign_id')
         channel_id = data.get('channel_id')
-        buyer_id = data.get('buyer_id', data.get('user_id'))
+        buyer_telegram_id = data.get('telegram_id', data.get('user_id', data.get('buyer_id')))
         memo = data.get('memo')
         amount_raw = data.get('amount')
 
@@ -1907,7 +1907,7 @@ def api_create_deal():
             field_name for field_name, value in {
                 'campaign_id': campaign_id,
                 'channel_id': channel_id,
-                'buyer_id': buyer_id,
+                'telegram_id': buyer_telegram_id,
                 'amount': amount_raw,
             }.items() if value in (None, '')
         ]
@@ -1930,18 +1930,48 @@ def api_create_deal():
             return json_response(False, error='channel_id must be a valid integer', status=400)
 
         try:
-            buyer_id = int(buyer_id)
+            buyer_telegram_id = int(buyer_telegram_id)
         except (TypeError, ValueError):
-            return json_response(False, error='buyer_id must be a valid integer', status=400)
+            return json_response(False, error='telegram_id must be a valid integer', status=400)
 
         if campaign_id <= 0:
             return json_response(False, error='campaign_id is required', status=400)
         if channel_id == 0:
             return json_response(False, error='channel_id is required', status=400)
-        if buyer_id <= 0:
-            return json_response(False, error='buyer_id must be greater than 0', status=400)
+        if buyer_telegram_id <= 0:
+            return json_response(False, error='telegram_id must be greater than 0', status=400)
         if amount <= 0:
             return json_response(False, error='amount must be greater than 0', status=400)
+
+        try:
+            buyer_lookup = (
+                supabase.table('app_users')
+                .select('id')
+                .eq('telegram_id', buyer_telegram_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as user_lookup_error:
+            logger.error(
+                "Failed to resolve app_users.id for telegram_id=%s: %s",
+                buyer_telegram_id,
+                user_lookup_error
+            )
+            return json_response(False, error='Failed to resolve user', status=500)
+
+        user_rows = buyer_lookup.data or []
+        if not user_rows:
+            return jsonify({'error': 'User not registered'}), 404
+
+        buyer_id = user_rows[0].get('id')
+        if not isinstance(buyer_id, int):
+            logger.error(
+                "Resolved buyer_id has invalid type for telegram_id=%s. buyer_id=%s",
+                buyer_telegram_id,
+                buyer_id
+            )
+            return json_response(False, error='Failed to resolve user', status=500)
+
         try:
             channel_row = (
                 supabase.table("channels")
