@@ -2021,7 +2021,7 @@ def api_get_deals():
         except (TypeError, ValueError):
             return json_response(False, error='user_id must be a valid telegram id integer', status=400)
 
-        deals_resp = (
+        buyer_deals_resp = (
             supabase.table("deals")
             .select("*")
             .eq("buyer_id", user_id)
@@ -2029,7 +2029,32 @@ def api_get_deals():
             .execute()
         )
 
-        deals = deals_resp.data or []
+        buyer_deals = buyer_deals_resp.data or []
+
+        channels_resp = (
+            supabase.table("channels")
+            .select("id")
+            .eq("owner_id", user_id)
+            .execute()
+        )
+        user_channel_ids = [channel["id"] for channel in (channels_resp.data or []) if channel.get("id") is not None]
+
+        channel_deals = []
+        if user_channel_ids:
+            channel_deals_resp = (
+                supabase.table("deals")
+                .select("*")
+                .in_("channel_id", user_channel_ids)
+                .in_("status", ["waiting_payment", "paid", "ad_posted"])
+                .execute()
+            )
+            channel_deals = channel_deals_resp.data or []
+
+        deals_map = {deal["id"]: deal for deal in buyer_deals}
+        for deal in channel_deals:
+            deals_map.setdefault(deal["id"], deal)
+
+        deals = list(deals_map.values())
         return json_response(True, data={'deals': deals})
 
     except Exception as e:
