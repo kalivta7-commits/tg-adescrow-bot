@@ -442,11 +442,6 @@
         var text = toText(textEl && textEl.value).trim();
         var budget = toNumber(budgetEl && budgetEl.value, 0);
 
-        if (!State.userId) {
-            toast('Authentication incomplete. Please reopen MiniApp and try again.', 'error');
-            return;
-        }
-
         if (safeArray(State.selected).length === 0) {
             toast('Please select at least one channel before submitting.', 'error');
             return;
@@ -468,6 +463,13 @@
         setLoading('btnSubmitRequest', true);
 
         try {
+            const telegramId = Number(window.Telegram.WebApp.initDataUnsafe.user.id);
+
+            if (!Number.isFinite(telegramId) || telegramId <= 0) {
+                toast("Telegram authentication failed. Reopen Mini App.", "error");
+                return;
+            }
+
             var campaignData = {
                 title: title,
                 text: text,
@@ -486,12 +488,15 @@
                 campaignData.media_url = upload.media_url;
             }
 
-            var res = await apiPost('/api/campaign/create', {
-                user_id: State.userId,
+            var campaignPayload = {
                 title: campaignData.title,
                 text: campaignData.text,
-                budget: campaignData.budget
-            });
+                budget: Number(campaignData.budget),
+                telegram_id: telegramId
+            };
+            console.log('Campaign payload:', campaignPayload);
+
+            var res = await apiPost('/api/campaign/create', campaignPayload);
 
             var createdCampaign = safeObj((res && res.data && res.data.campaign) || (res && res.data));
             if (!(res && res.success === true && createdCampaign && createdCampaign.id)) {
@@ -504,8 +509,6 @@
             }).filter(function (channelId) {
                 return Number.isFinite(channelId) && channelId !== 0;
             });
-
-            const telegramId = window.Telegram.WebApp.initDataUnsafe.user.id;
 
             var dealPromises = selected.map(function (channelId) {
                 if (!channelId || Number.isNaN(channelId)) {
@@ -525,15 +528,10 @@
                 var dealPayload = {
                     campaign_id: Number(createdCampaign.id),
                     channel_id: Number(channelId),
-                    telegram_id: Number(telegramId),
-                    amount: Number(budget)
+                    amount: Number(amount),
+                    telegram_id: telegramId
                 };
-                console.log('Deal payload:', {
-                    campaign_id: Number(createdCampaign.id),
-                    channel_id: Number(channelId),
-                    telegram_id: Number(telegramId),
-                    amount: Number(budget)
-                });
+                console.log('Deal payload:', dealPayload);
 
                 return apiPost('/api/deal/create', dealPayload).then(function (dealRes) {
                     if (!(dealRes && dealRes.success === true && dealRes.data)) {
