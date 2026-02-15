@@ -1790,14 +1790,16 @@ def api_get_deals():
             # 1. Deals where user is buyer
             buyer_resp = supabase.table("deals").select("""
                 id, amount, status, created_at,
-                campaigns(title), channels(username,name,owner_id)
+                campaign_id,
+                channel_id
             """).eq("buyer_id", user_id).execute()
 
             # 2. Deals where user is channel owner (seller)
             # using !inner to filter by joined table
             seller_resp = supabase.table("deals").select("""
                 id, amount, status, created_at,
-                campaigns(title), channels!inner(username,name,owner_id)
+                campaign_id,
+                channel_id
             """).eq("channels.owner_id", user_id).execute()
         except Exception as e:
             logger.error(f"Error querying deals for user_id={user_id}: {e}")
@@ -1811,14 +1813,11 @@ def api_get_deals():
         formatted_deals = []
         for d in all_deals.values():
             state = d['status']
-            # Safely get nested fields
-            camp = d.get('campaigns') or {}
-            chan = d.get('channels') or {}
 
             formatted_deals.append({
                 "id": d['id'],
-                "title": camp.get('title') or f"Deal #{d['id']}",
-                "channel": chan.get('username') or 'Unknown',
+                "title": f"Deal #{d['id']}",
+                "channel": d.get('channel_id') or 'Unknown',
                 "status": state,
                 "step": DealStateMachine.get_step(state),
                 "allowed_transitions": DealStateMachine.get_allowed_transitions(state),
