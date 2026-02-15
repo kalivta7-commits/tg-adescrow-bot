@@ -2031,27 +2031,100 @@ def api_create_campaign():
 @rate_limit()
 def api_get_deals():
     try:
-        user_id_raw = request.args.get('user_id')
-        if user_id_raw is None:
-            return json_response(False, error='user_id (telegram id) is required', status=400)
+        telegram_id = request.args.get('user_id')
+
+        if not telegram_id:
+            return json_response(False, error='user_id required', status=400)
 
         if supabase is None:
             return json_response(False, error='Supabase is not configured', status=503)
 
-        try:
-            user_id = int(user_id_raw)
-        except (TypeError, ValueError):
-            return json_response(False, error='user_id must be a valid telegram id integer', status=400)
+        telegram_id = str(telegram_id)
 
-        deals_resp = (
-            supabase.table("deals")
-            .select("*")
-            .eq("buyer_id", user_id)
-            .in_("status", ["waiting_payment", "paid", "ad_posted"])
+        buyer_response = (
+            supabase.table('deals')
+            .select('''
+                id,
+                campaign_id,
+                buyer_id,
+                channel_id,
+                amount,
+                status,
+                created_at,
+                campaigns(title),
+                channels(username,name,owner_id)
+            ''')
+            .eq('buyer_id', telegram_id)
             .execute()
         )
 
-        deals = deals_resp.data or []
+        all_response = (
+            supabase.table('deals')
+            .select('''
+                id,
+                campaign_id,
+                buyer_id,
+                channel_id,
+                amount,
+                status,
+                created_at,
+                campaigns(title),
+                channels(username,name,owner_id)
+            ''')
+            .execute()
+        )
+
+        buyer_rows = buyer_response.data or []
+        all_rows = all_response.data or []
+        owner_rows = [
+            row for row in all_rows
+            if str((row.get('channels') or {}).get('owner_id')) == telegram_id
+        ]
+
+        merged_rows = []
+        seen_ids = set()
+        for row in buyer_rows + owner_rows:
+            row_id = row.get('id')
+            if row_id in seen_ids:
+                continue
+            seen_ids.add(row_id)
+            merged_rows.append(row)
+
+        status_map = {
+            'waiting_payment': ('pending', 1),
+            'paid': ('funded', 2),
+            'ad_posted': ('posted', 3),
+            'released': ('completed', 4),
+            'refunded': ('refunded', 0),
+        }
+
+        deals = []
+        for row in merged_rows:
+            raw_status = row.get('status', 'pending')
+            normalized_status, step = status_map.get(raw_status, (raw_status, 1))
+
+            allowed = []
+            if normalized_status == 'pending':
+                allowed = ['cancel']
+            elif normalized_status == 'funded':
+                allowed = ['mark_posted']
+            elif normalized_status == 'posted':
+                allowed = ['verify', 'dispute']
+
+            campaign = row.get('campaigns') or {}
+            channel = row.get('channels') or {}
+
+            deals.append({
+                'id': row.get('id'),
+                'title': campaign.get('title') or f"Deal {row.get('id')}",
+                'channel': channel.get('username') or channel.get('name'),
+                'status': normalized_status,
+                'step': step,
+                'allowed_transitions': allowed,
+                'escrow_amount': float(row.get('amount') or 0),
+                'created_at': row.get('created_at')
+            })
+
         return json_response(True, data={'deals': deals})
 
     except Exception as e:
