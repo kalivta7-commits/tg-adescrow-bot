@@ -641,16 +641,26 @@
             owner_wallet: ownerWallet
         };
 
-        apiPost('/api/register-channel', data).then(function (res) {
-            if (res.success) {
+        fetch('/api/register-channel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        }).then(function (res) {
+            return res.json();
+        }).then(function (json) {
+            if (json.success) {
                 toast('Channel registered successfully', 'success');
                 clearChannelForm();
                 loadChannels(); // Reload channels list
-            } else {
-                toast(res.error || 'Failed to register channel', 'error');
+                return;
             }
-        }).catch(function (e) {
-            console.log('Error registering channel:', e);
+
+            console.error('Channel register failed:', json.error);
+            toast(json.error || 'Failed to register channel', 'error');
+        }).catch(function (err) {
+            console.error('Fetch error:', err);
             toast('Error registering channel', 'error');
         }).finally(function () {
             setLoading('btnRegister', false);
