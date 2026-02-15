@@ -2036,10 +2036,13 @@ def api_get_deals():
         if not telegram_id:
             return json_response(False, error='user_id required', status=400)
 
+        try:
+            telegram_id = int(telegram_id)
+        except ValueError:
+            return json_response(False, error='invalid user_id', status=400)
+
         if supabase is None:
             return json_response(False, error='Supabase is not configured', status=503)
-
-        telegram_id = str(telegram_id)
 
         buyer_response = (
             supabase.table('deals')
