@@ -542,15 +542,21 @@
                     throw new Error('Invalid channel amount for channel #' + channelId);
                 }
 
+                var selectedChannelId = Number(channelId);
                 var dealPayload = {
                     campaign_id: Number(createdCampaign.id),
-                    channel_id: Number(channelId),
-                    amount: Number(amount),
-                    telegram_id: telegramId
+                    telegram_id: telegramId,
+                    channel_id: selectedChannelId,
+                    amount: amount
                 };
                 console.log('Deal payload:', dealPayload);
 
-                return apiPost('/api/deal/create', dealPayload).then(function (dealRes) {
+                return apiPost('/api/deal/create', {
+                    telegram_id: telegramId,
+                    channel_id: selectedChannelId,
+                    amount: amount,
+                    campaign_id: Number(createdCampaign.id)
+                }).then(function (dealRes) {
                     if (!(dealRes && dealRes.success === true && dealRes.data)) {
                         throw new Error(dealRes && dealRes.error ? dealRes.error : 'Failed to create deal');
                     }
