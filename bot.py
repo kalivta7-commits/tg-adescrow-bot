@@ -1760,30 +1760,44 @@ def api_create_campaign():
 @rate_limit()
 def api_get_deals():
     try:
-        user_id_raw = request.args.get('user_id')
-        if not user_id_raw:
-            return json_response(False, error='user_id (telegram id) is required', status=400)
+        telegram_id_raw = request.args.get("telegram_id")
+
+        if not telegram_id_raw:
+            return json_response(False, error="telegram_id is required", status=400)
 
         if supabase is None:
             return json_response(False, error='Supabase is not configured', status=503)
 
         try:
-            telegram_id = int(user_id_raw)
+            telegram_id = int(telegram_id_raw)
         except (TypeError, ValueError):
-            return json_response(False, error='user_id must be integer', status=400)
+            return json_response(False, error="telegram_id must be a valid integer", status=400)
+
+        user_lookup = (
+            supabase.table("app_users")
+            .select("id")
+            .eq("telegram_id", telegram_id)
+            .single()
+            .execute()
+        )
+
+        if not user_lookup.data:
+            return json_response(False, error="User not registered", status=404)
+
+        user_id = user_lookup.data["id"]
 
         # 1. Deals where user is buyer
         buyer_resp = supabase.table("deals").select("""
             id, amount, status, created_at,
             campaigns(title), channels(username,name,owner_id)
-        """).eq("buyer_id", telegram_id).execute()
+        """).eq("buyer_id", user_id).execute()
 
         # 2. Deals where user is channel owner (seller)
         # using !inner to filter by joined table
         seller_resp = supabase.table("deals").select("""
             id, amount, status, created_at,
             campaigns(title), channels!inner(username,name,owner_id)
-        """).eq("channels.owner_id", telegram_id).execute()
+        """).eq("channels.owner_id", user_id).execute()
 
         # Merge results by ID
         all_deals = {}
