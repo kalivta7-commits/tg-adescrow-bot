@@ -1863,8 +1863,16 @@ def api_create_channel():
         telegram_id = data.get('telegram_id') or data.get('user_id')
         username = data.get('username') or data.get('channel_handle')
 
+        try:
+            user_id = int(telegram_id)
+        except (TypeError, ValueError):
+            user_id = None
+
         if not telegram_id or not username:
             return json_response(False, error='telegram_id and username are required', status=400)
+
+        if user_id is None:
+            return json_response(False, error='telegram_id must be a valid numeric Telegram user id', status=400)
 
         if bot_instance is None or bot_instance.application is None:
             return json_response(False, error='Bot instance is not initialized', status=503)
@@ -1904,6 +1912,20 @@ def api_create_channel():
         )
 
         if result.get('success'):
+            telegram_channel_id = (result.get('channel') or {}).get('telegram_channel_id')
+            if supabase and telegram_channel_id:
+                try:
+                    (
+                        supabase.table("channels")
+                        .insert({
+                            "telegram_channel_id": telegram_channel_id,
+                            "owner_id": user_id
+                        })
+                        .execute()
+                    )
+                except Exception as sync_err:
+                    logger.warning(f"Supabase channel insert failed for telegram_channel_id={telegram_channel_id}: {sync_err}")
+
             return json_response(True, data={'channel': result.get('channel')})
 
         error_msg = result.get('error') or 'Channel registration failed'
