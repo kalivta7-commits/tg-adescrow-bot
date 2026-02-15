@@ -2009,76 +2009,28 @@ def api_create_campaign():
 @rate_limit()
 def api_get_deals():
     try:
-        telegram_id_raw = request.args.get('user_id')
-        if telegram_id_raw is None:
+        user_id_raw = request.args.get('user_id')
+        if user_id_raw is None:
             return json_response(False, error='user_id (telegram id) is required', status=400)
 
+        if supabase is None:
+            return json_response(False, error='Supabase is not configured', status=503)
+
         try:
-            telegram_id = int(telegram_id_raw)
+            user_id = int(user_id_raw)
         except (TypeError, ValueError):
             return json_response(False, error='user_id must be a valid telegram id integer', status=400)
 
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id FROM users WHERE telegram_id = ?', (telegram_id,))
-            user_row = cursor.fetchone()
-            if not user_row:
-                return json_response(False, error='User not found', status=404)
+        deals_resp = (
+            supabase.table("deals")
+            .select("*")
+            .eq("buyer_id", user_id)
+            .in_("status", ["waiting_payment", "paid", "ad_posted"])
+            .execute()
+        )
 
-            db_user_id = user_row['id']
-
-            cursor.execute('''
-                SELECT d.id, d.campaign_id, d.channel_id, d.status, d.escrow_amount, d.created_at,
-                       d.media_type, d.media_url,
-                       camp.advertiser_id, c.owner_id,
-                       c.username as channel_handle, c.name as channel_name,
-                       camp.title as campaign_title,
-                       CASE
-                           WHEN c.owner_id = ? THEN 'owner'
-                           WHEN camp.advertiser_id = ? THEN 'advertiser'
-                           ELSE 'viewer'
-                       END AS role
-                FROM deals d
-                LEFT JOIN channels c ON d.channel_id = c.id
-                LEFT JOIN campaigns camp ON d.campaign_id = camp.id
-                WHERE camp.advertiser_id = ? OR c.owner_id = ?
-                ORDER BY d.created_at DESC
-            ''', (db_user_id, db_user_id, db_user_id, db_user_id))
-            rows = cursor.fetchall()
-
-            deals = []
-            for row in rows:
-                state = row['status']
-                if row['advertiser_id'] == db_user_id:
-                    role = 'advertiser'
-                elif row['owner_id'] == db_user_id:
-                    role = 'owner'
-                else:
-                    role = 'viewer'
-
-                allowed = get_role_allowed_actions(state, role)
-
-                deals.append({
-                    'id': row['id'],
-                    'campaign_id': row['campaign_id'],
-                    'channel_id': row['channel_id'],
-                    'status': state,
-                    'label': DealStateMachine.get_label(state),
-                    'escrow_amount': row['escrow_amount'],
-                    'amount': row['escrow_amount'],
-                    'title': row['campaign_title'] or row['channel_name'] or f"Deal #{row['id']}",
-                    'channel': row['channel_handle'],
-                    'type': 'deal',
-                    'role': role,
-                    'step': DealStateMachine.get_step(state),
-                    'is_terminal': DealStateMachine.is_terminal(state),
-                    'allowed_transitions': allowed,
-                    'created_at': row['created_at'],
-                    'media_type': row['media_type'],
-                    'media_url': row['media_url']
-                })
-
-            return json_response(True, data={'deals': deals})
+        deals = deals_resp.data or []
+        return json_response(True, data={'deals': deals})
 
     except Exception as e:
         logger.error(f"Error getting deals: {e}")
