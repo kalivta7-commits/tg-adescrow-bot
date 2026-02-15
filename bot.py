@@ -1758,22 +1758,14 @@ def api_create_campaign():
 
 @flask_app.route('/api/deals', methods=['GET'])
 @rate_limit()
-def api_get_deals():
+def get_deals():
     try:
-        if supabase is None:
-            return json_response(False, error='Supabase is not configured', status=503)
-
         telegram_id = request.args.get("telegram_id")
 
-        # DEBUG MODE - return all deals if no telegram_id
         if not telegram_id:
-            res = supabase.table("deals").select("*").execute()
-            return jsonify(res.data), 200
+            return jsonify({"error": "telegram_id is required"}), 400
 
-        try:
-            telegram_id_int = int(telegram_id)
-        except (TypeError, ValueError):
-            return json_response(False, error="telegram_id must be a valid integer", status=400)
+        telegram_id_int = int(telegram_id)
 
         user_lookup = (
             supabase.table("app_users")
@@ -1784,69 +1776,21 @@ def api_get_deals():
         )
 
         if not user_lookup.data:
-            return json_response(False, error="User not registered", status=404)
+            return jsonify({"error": "User not registered"}), 404
 
         user_id = user_lookup.data["id"]
 
-        try:
-            # 1. Deals where user is buyer
-            buyer_resp = supabase.table("deals").select("""
-                id, amount, status, created_at,
-                campaign_id,
-                channel_id
-            """).eq("buyer_id", str(telegram_id)).execute()
+        deals = (
+            supabase.table("deals")
+            .select("*")
+            .eq("buyer_id", user_id)
+            .execute()
+        )
 
-            # 2. Find channels owned by user
-            owned_channels = (
-                supabase.table("channels")
-                .select("id")
-                .eq("owner_id", user_id)
-                .execute()
-            )
-            channel_ids = [c["id"] for c in (owned_channels.data or [])]
-
-            # 3. Deals where user is seller via owned channels
-            if channel_ids:
-                seller_resp = supabase.table("deals").select("""
-                    id, amount, status, created_at,
-                    campaign_id,
-                    channel_id
-                """).in_("channel_id", channel_ids).execute()
-            else:
-                seller_resp = None
-        except Exception as e:
-            logger.error(f"Error querying deals for user_id={user_id}: {e}")
-            return json_response(False, error=f"deals_query_failed: {str(e)}", status=500)
-
-        # Merge results by ID
-        all_deals = {}
-        seller_deals = seller_resp.data if seller_resp else []
-        for d in (buyer_resp.data or []) + (seller_deals or []):
-            all_deals[d['id']] = d
-
-        formatted_deals = []
-        for d in all_deals.values():
-            state = d['status']
-
-            formatted_deals.append({
-                "id": d['id'],
-                "title": f"Deal #{d['id']}",
-                "channel": d.get('channel_id') or 'Unknown',
-                "status": state,
-                "step": DealStateMachine.get_step(state),
-                "allowed_transitions": DealStateMachine.get_allowed_transitions(state),
-                "escrow_amount": d['amount'],
-                "created_at": d['created_at']
-            })
-
-        # Sort by newest first
-        formatted_deals.sort(key=lambda x: x['created_at'], reverse=True)
-
-        return json_response(True, data={'deals': formatted_deals})
+        return jsonify(deals.data), 200
 
     except Exception as e:
-        logger.error(f"Error getting deals: {e}")
-        return json_response(False, error=str(e), status=500)
+        return jsonify({"error": str(e)}), 500
 
 
 @flask_app.route('/api/leaderboard/monthly', methods=['GET'])
