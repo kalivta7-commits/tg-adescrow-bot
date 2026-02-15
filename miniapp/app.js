@@ -344,7 +344,10 @@
         var html = '';
         channels.forEach(function (ch, index) {
             var channel = safeObj(ch);
-            var channelId = channel.id !== undefined && channel.id !== null ? channel.id : ('idx-' + index);
+            var telegramChannelId = toNumber(channel.telegram_channel_id, NaN);
+            var channelId = Number.isNaN(telegramChannelId)
+                ? ('idx-' + index)
+                : telegramChannelId;
             var channelName = toText(channel.name || channel.username || 'Unknown channel');
             var channelUser = toText(channel.username || '');
             var channelCategory = capitalize(toText(channel.category || 'general'));
@@ -503,7 +506,7 @@
             var dealPromises = selected.map(function (channelId) {
                 var channel = safeArray(State.channels).find(function (c) {
                     var item = safeObj(c);
-                    return item.id == channelId;
+                    return toNumber(item.telegram_channel_id, NaN) == channelId;
                 });
 
                 var amount = toNumber(channel && channel.price, 0);
@@ -542,7 +545,9 @@
     function showConfirmation() {
         var total = 0;
         State.selected.forEach(function (id) {
-            var ch = State.channels.find(function (c) { return c.id == id; });
+            var ch = State.channels.find(function (c) {
+                return toNumber(safeObj(c).telegram_channel_id, NaN) == id;
+            });
             if (ch) total += ch.price;
         });
 
