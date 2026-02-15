@@ -1794,20 +1794,32 @@ def api_get_deals():
                 channel_id
             """).eq("buyer_id", user_id).execute()
 
-            # 2. Deals where user is channel owner (seller)
-            # using !inner to filter by joined table
-            seller_resp = supabase.table("deals").select("""
-                id, amount, status, created_at,
-                campaign_id,
-                channel_id
-            """).eq("seller_id", user_id).execute()
+            # 2. Find channels owned by user
+            owned_channels = (
+                supabase.table("channels")
+                .select("id")
+                .eq("owner_id", user_id)
+                .execute()
+            )
+            channel_ids = [c["id"] for c in (owned_channels.data or [])]
+
+            # 3. Deals where user is seller via owned channels
+            if channel_ids:
+                seller_resp = supabase.table("deals").select("""
+                    id, amount, status, created_at,
+                    campaign_id,
+                    channel_id
+                """).in_("channel_id", channel_ids).execute()
+            else:
+                seller_resp = None
         except Exception as e:
             logger.error(f"Error querying deals for user_id={user_id}: {e}")
             return json_response(False, error=f"deals_query_failed: {str(e)}", status=500)
 
         # Merge results by ID
         all_deals = {}
-        for d in (buyer_resp.data or []) + (seller_resp.data or []):
+        seller_deals = seller_resp.data if seller_resp else []
+        for d in (buyer_resp.data or []) + (seller_deals or []):
             all_deals[d['id']] = d
 
         formatted_deals = []
