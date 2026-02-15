@@ -1786,18 +1786,22 @@ def api_get_deals():
 
         user_id = user_lookup.data["id"]
 
-        # 1. Deals where user is buyer
-        buyer_resp = supabase.table("deals").select("""
-            id, amount, status, created_at,
-            campaigns(title), channels(username,name,owner_id)
-        """).eq("buyer_id", user_id).execute()
+        try:
+            # 1. Deals where user is buyer
+            buyer_resp = supabase.table("deals").select("""
+                id, amount, status, created_at,
+                campaigns(title), channels(username,name,owner_id)
+            """).eq("buyer_id", user_id).execute()
 
-        # 2. Deals where user is channel owner (seller)
-        # using !inner to filter by joined table
-        seller_resp = supabase.table("deals").select("""
-            id, amount, status, created_at,
-            campaigns(title), channels!inner(username,name,owner_id)
-        """).eq("channels.owner_id", user_id).execute()
+            # 2. Deals where user is channel owner (seller)
+            # using !inner to filter by joined table
+            seller_resp = supabase.table("deals").select("""
+                id, amount, status, created_at,
+                campaigns(title), channels!inner(username,name,owner_id)
+            """).eq("channels.owner_id", user_id).execute()
+        except Exception as e:
+            logger.error(f"Error querying deals for user_id={user_id}: {e}")
+            return json_response(False, error=f"deals_query_failed: {str(e)}", status=500)
 
         # Merge results by ID
         all_deals = {}
