@@ -1668,21 +1668,15 @@ def api_create_campaign():
     try:
         data = request.get_json() or {}
 
-        user_id_raw = data.get('user_id')
         title = str(data.get('title') or '').strip()
-        text = str(data.get('text') or data.get('description') or '').strip()
+        text = str(data.get('text') or '').strip()
         budget_raw = data.get('budget')
-
-        if user_id_raw is None:
-            return jsonify({'success': False, 'error': 'user_id: is required'}), 400
+        telegram_id = data.get("telegram_id")
 
         try:
-            advertiser_id = int(user_id_raw)
+            telegram_id = int(telegram_id)
         except (TypeError, ValueError):
-            return jsonify({'success': False, 'error': 'user_id: must be an integer database id'}), 400
-
-        if advertiser_id <= 0:
-            return jsonify({'success': False, 'error': 'user_id: must be greater than 0'}), 400
+            return json_response(False, error="telegram_id must be a valid integer", status=400)
 
         if not title:
             return jsonify({'success': False, 'error': 'title: is required'}), 400
@@ -1707,10 +1701,19 @@ def api_create_campaign():
         if supabase is None:
             return json_response(False, error='Database not configured', status=503)
 
-        # Check if user exists
-        user_resp = supabase.table("app_users").select("id").eq("id", advertiser_id).execute()
-        if not user_resp.data:
-            return jsonify({'success': False, 'error': 'user_id: user not found'}), 404
+        # Resolve advertiser_id from telegram_id
+        user_lookup = (
+            supabase.table("app_users")
+            .select("id")
+            .eq("telegram_id", telegram_id)
+            .single()
+            .execute()
+        )
+
+        if not user_lookup.data:
+            return json_response(False, error="User not registered", status=404)
+
+        advertiser_id = user_lookup.data["id"]
 
         # Create campaign
         campaign_resp = supabase.table("campaigns").insert({
