@@ -1486,15 +1486,22 @@ def api_auth():
         if not telegram_id:
             return json_response(False, error='telegram_id is required', status=400)
 
+        username = data.get('username')
+
         # Check if user exists
         user_resp = supabase.table("app_users").select("*").eq("telegram_id", telegram_id).execute()
         if user_resp.data:
             user = user_resp.data[0]
+            update_resp = supabase.table("app_users").update({
+                "username": username
+            }).eq("id", user["id"]).execute()
+            if update_resp.data:
+                user = update_resp.data[0]
         else:
             # Create new user
             insert_resp = supabase.table("app_users").insert({
                 "telegram_id": telegram_id,
-                "username": data.get('username'),
+                "username": username,
                 "role": "user"
             }).execute()
             if insert_resp.data:
@@ -1606,9 +1613,11 @@ def api_create_channel():
             return json_response(False, error='Database not configured', status=503)
 
         # Get user_id from telegram_id
-        owner_id = get_user_id(telegram_id)
-        if not owner_id:
+        owner_resp = supabase.table("app_users").select("id").eq("telegram_id", telegram_id).execute()
+        owner_rows = owner_resp.data or []
+        if not owner_rows:
             return json_response(False, error='User not found', status=404)
+        owner_id = owner_rows[0]["id"]
 
         category = data.get('category', 'general')
         owner_wallet = (data.get('owner_wallet') or '').strip()
