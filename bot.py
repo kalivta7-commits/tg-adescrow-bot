@@ -1900,7 +1900,7 @@ def api_create_deal():
         campaign_id = data.get('campaign_id')
         channel_id = data.get('channel_id')
         buyer_telegram_id = data.get('telegram_id')
-        memo = data.get('memo')
+        message = data.get('message')
         amount_raw = data.get('amount')
 
         missing_fields = [
@@ -1909,6 +1909,7 @@ def api_create_deal():
                 'channel_id': channel_id,
                 'telegram_id': buyer_telegram_id,
                 'amount': amount_raw,
+                'message': message,
             }.items() if value in (None, '')
         ]
         if missing_fields:
@@ -1925,7 +1926,7 @@ def api_create_deal():
             return json_response(False, error='campaign_id must be a valid integer', status=400)
 
         try:
-            channel_id = int(data.get('channel_id'))
+            channel_id = int(channel_id)
         except (TypeError, ValueError):
             return json_response(False, error='channel_id must be a valid integer', status=400)
 
@@ -1961,7 +1962,7 @@ def api_create_deal():
 
         user_rows = buyer_lookup.data or []
         if not user_rows:
-            return jsonify({'error': 'User not registered'}), 400
+            return jsonify({'error': 'User not registered'}), 404
 
         buyer_id = user_rows[0].get('id')
         if not isinstance(buyer_id, int):
@@ -1971,6 +1972,8 @@ def api_create_deal():
                 buyer_id
             )
             return json_response(False, error='Failed to resolve user', status=500)
+
+        logger.info(f"Resolved buyer_id={buyer_id} from telegram_id={buyer_telegram_id}")
 
         try:
             channel_row = (
@@ -2023,7 +2026,7 @@ def api_create_deal():
                     bot_instance.application.bot,
                     deal_id,
                     'created',
-                    {'memo': memo or ''}
+                    {'memo': message or ''}
                 ),
                 task_name=f"deal-notify-{deal_id}-created"
             )
