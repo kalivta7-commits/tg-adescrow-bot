@@ -524,12 +524,17 @@
                     campaign_id: createdCampaign.id,
                     user_id: State.user.id,
                     channel_id: Number(channelId),
-                    amount: amount,
+                    amount: Number(amount),
                     memo: 'Ad campaign escrow',
                     media_type: campaignData.media_type,
                     media_url: campaignData.media_url
                 };
-                console.log('[DealCreate] Payload:', dealPayload);
+                console.log('Deal payload:', {
+                    campaign_id: createdCampaign.id,
+                    user_id: State.user.id,
+                    channel_id: Number(channelId),
+                    amount: Number(amount)
+                });
 
                 return apiPost('/api/deal/create', dealPayload).then(function (dealRes) {
                     if (!(dealRes && dealRes.success === true && dealRes.data)) {
