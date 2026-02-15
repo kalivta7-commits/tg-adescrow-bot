@@ -2021,11 +2021,14 @@ def api_get_deals():
         except (TypeError, ValueError):
             return json_response(False, error='user_id must be a valid telegram id integer', status=400)
 
+        deal_statuses = ["waiting_payment", "paid", "ad_posted"]
+        logger.info(f"[GET /api/deals] resolved user_id={user_id} from raw={user_id_raw}")
+
         buyer_deals_resp = (
             supabase.table("deals")
             .select("*")
             .eq("buyer_id", user_id)
-            .in_("status", ["waiting_payment", "paid", "ad_posted"])
+            .in_("status", deal_statuses)
             .execute()
         )
 
@@ -2038,6 +2041,7 @@ def api_get_deals():
             .execute()
         )
         user_channel_ids = [channel["id"] for channel in (channels_resp.data or []) if channel.get("id") is not None]
+        logger.info(f"[GET /api/deals] user_id={user_id} channel_ids={user_channel_ids}")
 
         channel_deals = []
         if user_channel_ids:
@@ -2045,7 +2049,7 @@ def api_get_deals():
                 supabase.table("deals")
                 .select("*")
                 .in_("channel_id", user_channel_ids)
-                .in_("status", ["waiting_payment", "paid", "ad_posted"])
+                .in_("status", deal_statuses)
                 .execute()
             )
             channel_deals = channel_deals_resp.data or []
