@@ -1795,6 +1795,12 @@ def api_get_deals():
 
         user_id = user_res.data.get("id")
 
+        print("=== DEBUG DEALS ===")
+        print("telegram_id:", telegram_id)
+        print("user_id:", user_id)
+        print("user_channel_uuid:", user_channel_uuid)
+        print("===================")
+
         # Fetch deals where user is buyer OR seller (channel owner)
         query = supabase.table("deals") \
             .select("id, amount, status, created_at, buyer_id, channel_id") \
