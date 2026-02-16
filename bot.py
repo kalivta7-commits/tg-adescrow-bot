@@ -1512,7 +1512,7 @@ def api_get_channels():
                 return jsonify({'success': False, 'error': 'telegram_id must be an integer'}), 400
 
         # Build Supabase query
-        query = supabase.table("channels").select("id, owner_id, username, public_link, name, category, price, subscribers, avg_views, total_deals, completed_deals, created_at")
+        query = supabase.table("channels").select("id, owner_id, telegram_channel_id, username, public_link, name, category, price, subscribers, avg_views, total_deals, completed_deals, created_at")
         
         if owner_only:
             query = query.eq("owner_id", owner_id)
@@ -1531,22 +1531,15 @@ def api_get_channels():
                 success_rate = round((completed / total) * 100, 2)
 
             channels.append({
-                'id': row['id'],
-                'owner_id': row['owner_id'],
-                'handle': row['username'],
-                'username': row['username'],
-                'public_link': row.get('public_link') or (
-                    f"https://t.me/{row['username'].lstrip('@')}" if row.get('username') else None
-                ),
-                'name': row.get('name') or row.get('username'),
-                'category': row.get('category'),
-                'price': row.get('price'),
-                'subscribers': row.get('subscribers'),
-                'views': row.get('avg_views'),
-                'total_deals': total,
-                'completed_deals': completed,
-                'success_rate': success_rate,
-                'created_at': row.get('created_at')
+                "id": row["id"],
+                "telegram_channel_id": row["telegram_channel_id"],
+                "name": row["name"],
+                "username": row["username"],
+                "price": row["price"],
+                "subscribers": row["subscribers"],
+                "avg_views": row["avg_views"],
+                "category": row["category"],
+                "public_link": row["public_link"],
             })
 
         return jsonify({'success': True, 'data': channels}), 200
