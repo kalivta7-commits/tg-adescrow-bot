@@ -284,12 +284,14 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
             });
     }
 
-    function submitDeal(selectedCampaign, selectedChannel, amountValue) {
+    function submitDeal(selectedCampaign, selectedChannel, amountValue, mediaData) {
         var payload = {
             telegram_id: State.user.id,
             campaign_id: selectedCampaign.id,
             channel_id: selectedChannel.id,
-            amount: Number(amountValue)
+            amount: Number(amountValue),
+            media_url: mediaData && mediaData.media_url ? mediaData.media_url : null,
+            media_type: mediaData && mediaData.media_type ? mediaData.media_type : null
         };
 
         return apiPost('/api/deal/create', payload)
@@ -558,7 +560,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
                 var selectedCampaign = { id: createdCampaign.id };
                 var selectedChannel = { id: channelId };
-                return submitDeal(selectedCampaign, selectedChannel, amount);
+                return submitDeal(selectedCampaign, selectedChannel, amount, campaignData);
             });
 
             await Promise.all(dealPromises);
@@ -757,17 +759,30 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
       }
 
       deals.forEach(deal => {
-
         const card = document.createElement("div");
         card.className = "deal-card";
 
         const statusLabel = deal.label || deal.status || "pending";
+        const mediaUrl = typeof deal.media_url === "string" ? deal.media_url.trim() : "";
+        const mediaType = typeof deal.media_type === "string" ? deal.media_type.trim().toLowerCase() : "";
+
+        let mediaHTML = "";
+        if (mediaUrl) {
+          if (mediaType === "video") {
+            mediaHTML = `
+      <video controls width="100%" class="deal-media">
+        <source src="${mediaUrl}" type="video/mp4">
+      </video>
+    `;
+          } else if (mediaType === "image" || mediaType === "photo") {
+            mediaHTML = `<img src="${mediaUrl}" class="deal-media" alt="Deal media">`;
+          }
+        }
 
         let buttonsHTML = "";
 
         if (Array.isArray(deal.allowed_actions) && deal.allowed_actions.length > 0) {
           deal.allowed_actions.forEach(action => {
-
             const label = action
               .split("_")
               .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -786,6 +801,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
         card.innerHTML = `
       <h3>Deal #${deal.id}</h3>
+      ${mediaHTML}
       <p><strong>Amount:</strong> ${deal.amount || ""} TON</p>
       <p><strong>Status:</strong> ${statusLabel}</p>
       <div class="deal-buttons">
