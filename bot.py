@@ -1771,17 +1771,34 @@ def api_get_campaigns():
 def api_get_deals():
     try:
         telegram_id = int(request.args.get("telegram_id"))
+        user_channel_uuid = request.args.get("user_channel_uuid")
         user_id = get_user_id(telegram_id)
         if not user_id:
             return json_response(False, error="User not found", status=400)
 
         res = supabase.table("deals") \
-            .select("id, amount, status, created_at") \
-            .eq("buyer_id", user_id) \
+            .select("id, amount, status, created_at, buyer_id, channel_id") \
+            .or_(f"buyer_id.eq.{user_id},channel_id.eq.{user_channel_uuid}") \
             .order("created_at", desc=True) \
             .execute()
 
-        return json_response(True, data=res.data)
+        deals = res.data or []
+        for deal in deals:
+            if deal["buyer_id"] == user_id:
+                role = "buyer"
+            elif deal["channel_id"] == user_channel_uuid:
+                role = "seller"
+            else:
+                role = "other"
+
+            allowed_actions = []
+            if role == "seller" and deal["status"] == "pending":
+                allowed_actions = ["accept", "reject"]
+
+            deal["role"] = role
+            deal["allowed_actions"] = allowed_actions
+
+        return json_response(True, data=deals)
 
     except Exception as e:
         logger.error(f"Get deals error: {e}")
