@@ -1761,38 +1761,66 @@ def api_get_deals():
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "telegram_id must be an integer", "data": []}), 400
 
-        user_res = supabase.table("app_users") \
-            .select("id") \
-            .eq("telegram_id", telegram_id) \
-            .limit(1) \
+        user_res = (
+            supabase.table("app_users")
+            .select("id")
+            .eq("telegram_id", telegram_id)
+            .limit(1)
             .execute()
+        )
 
         if not user_res.data:
             return jsonify({"success": True, "data": []})
 
         user_id = user_res.data[0]["id"]
 
-        channels_res = supabase.table("channels") \
-            .select("id") \
-            .eq("owner_id", user_id) \
+        channels_res = (
+            supabase.table("channels")
+            .select("id")
+            .eq("owner_id", user_id)
             .execute()
+        )
 
-        channel_ids = [str(channel["id"]) for channel in (channels_res.data or []) if channel.get("id") is not None]
+        owned_channel_ids = [channel["id"] for channel in (channels_res.data or []) if channel.get("id") is not None]
 
-        filters = [f"buyer_id.eq.{user_id}"]
-        if channel_ids:
-            filters.append(f"channel_id.in.({','.join(channel_ids)})")
+        filter_parts = [f"buyer_id.eq.{user_id}"]
+        if owned_channel_ids:
+            channel_filter = ",".join(f'"{channel_id}"' for channel_id in owned_channel_ids)
+            filter_parts.append(f"channel_id.in.({channel_filter})")
 
-        filter_str = ",".join(filters)
+        filter_str = ",".join(filter_parts)
 
-        deals_res = supabase.table("deals") \
-            .select("*") \
-            .or_(filter_str) \
-            .order("created_at", desc=True) \
+        deals_res = (
+            supabase.table("deals")
+            .select("*")
+            .or_(filter_str)
+            .order("created_at", desc=True)
             .execute()
+        )
 
         deals = deals_res.data or []
-        return jsonify({"success": True, "data": deals})
+        owned_channel_set = set(owned_channel_ids)
+        enriched_deals = []
+
+        for deal in deals:
+            status = deal.get("status", "pending")
+            if deal.get("buyer_id") == user_id:
+                role = "advertiser"
+            elif deal.get("channel_id") in owned_channel_set:
+                role = "owner"
+            else:
+                role = "advertiser"
+
+            enriched_deals.append({
+                **deal,
+                "role": role,
+                "label": DealStateMachine.get_label(status),
+                "step": DealStateMachine.get_step(status),
+                "is_terminal": DealStateMachine.is_terminal(status),
+                "allowed_actions": get_role_allowed_actions(status, role),
+            })
+
+        return jsonify({"success": True, "data": enriched_deals})
 
     except Exception as e:
         logger.error(f"Deals error: {e}")
