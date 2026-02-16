@@ -7,6 +7,24 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
     const SUPABASE_ANON_KEY = 'sb_publishable_QzCFORKqw8d5Y2w6MA4KRw_AFJb4kYx';
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    async function ensureAuthenticated() {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session) {
+            return session;
+        }
+
+        // Temporary dev login (REMOVE later in production)
+        const { data, error } = await supabase.auth.signInAnonymously();
+
+        if (error) {
+            console.error("Supabase anonymous login failed:", error);
+            return null;
+        }
+
+        return data.session;
+    }
+
     window.addEventListener('error', function (event) {
         console.error('[GlobalError]', event && event.error ? event.error : event);
         toast('Something went wrong. Please try again.', 'error');
@@ -872,18 +890,25 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
         });
     }
     // API helper - POST
-async function apiPost(url, body) {
-    const res = await fetch(API_BASE + url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-    });
+    async function apiPost(url, body) {
+        const session = await ensureAuthenticated();
 
-    const data = await res.json();
-    return data;
-}
+        if (!session?.access_token) {
+            throw new Error("User not authenticated");
+        }
+
+        const res = await fetch(API_BASE + url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+        return data;
+    }
 
     // Debug helper (no-op bot bridge)
     function sendToBot(data) {
