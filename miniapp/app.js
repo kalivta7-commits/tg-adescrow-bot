@@ -871,21 +871,19 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
             return r.json();
         });
     }
-
     // API helper - POST
-    async function apiPost(url, body) {
-        const { data: { session } } = await supabase.auth.getSession();
-        return fetch(API_BASE + url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session?.access_token}`
-            },
-            body: JSON.stringify(body)
-        }).then(function (res) {
-            return res.json();
-        });
-    }
+async function apiPost(url, body) {
+    const res = await fetch(API_BASE + url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+    return data;
+}
 
     // Debug helper (no-op bot bridge)
     function sendToBot(data) {
