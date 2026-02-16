@@ -1770,20 +1770,16 @@ def api_get_campaigns():
 def api_get_deals():
     try:
         if supabase is None:
-            return jsonify({"success": False, "error": "Database not configured"}), 503
+            return jsonify({"success": False, "error": "Database not configured", "data": []}), 503
 
         telegram_id = request.args.get("telegram_id")
-        user_channel_uuid = request.args.get("user_channel_uuid")
+        user_channel_uid = request.args.get("user_channel_uid")
 
         if not telegram_id:
             return jsonify({"success": False, "error": "Missing telegram_id", "data": []}), 400
 
-        try:
-            telegram_id = int(telegram_id)
-        except ValueError:
-            return jsonify({"success": False, "error": "Invalid telegram_id", "data": []}), 400
+        telegram_id = int(telegram_id)
 
-        # Get internal user UUID
         user_res = supabase.table("app_users") \
             .select("id") \
             .eq("telegram_id", telegram_id) \
@@ -1793,31 +1789,45 @@ def api_get_deals():
         if not user_res.data:
             return jsonify({"success": True, "data": []})
 
-        user_id = user_res.data.get("id")
+        user_id = str(user_res.data["id"])
 
-        print("=== DEBUG DEALS ===")
-        print("telegram_id:", telegram_id)
-        print("user_id:", user_id)
-        print("user_channel_uuid:", user_channel_uuid)
-        print("===================")
+        buyer_res = supabase.table("deals") \
+            .select("*") \
+            .eq("buyer_id", user_id) \
+            .order("created_at", desc=True) \
+            .execute()
+        buyer_deals = buyer_res.data if buyer_res.data else []
 
-        # Fetch deals where user is buyer OR seller (channel owner)
-        query = supabase.table("deals") \
-            .select("id, amount, status, created_at, buyer_id, channel_id") \
-            .order("created_at", desc=True)
+        seller_deals = []
+        if user_channel_uid:
+            seller_res = supabase.table("deals") \
+                .select("*") \
+                .eq("channel_id", user_channel_uid) \
+                .order("created_at", desc=True) \
+                .execute()
+            seller_deals = seller_res.data if seller_res.data else []
 
-        res = query.execute()
-        deals = res.data if res.data else []
+        merged = buyer_deals + seller_deals
+
+        deduped = []
+        seen_ids = set()
+        for deal in merged:
+            deal_id = str(deal.get("id"))
+            if deal_id in seen_ids:
+                continue
+            seen_ids.add(deal_id)
+            deduped.append(deal)
 
         filtered = []
+        seller_uid = str(user_channel_uid) if user_channel_uid else None
 
-        for deal in deals:
-            deal_buyer = deal.get("buyer_id")
-            deal_channel = deal.get("channel_id")
+        for deal in deduped:
+            deal_buyer = str(deal.get("buyer_id"))
+            deal_channel = str(deal.get("channel_id"))
             deal_status = deal.get("status")
 
-            is_buyer = str(deal_buyer) == str(user_id)
-            is_seller = user_channel_uuid and str(deal_channel) == str(user_channel_uuid)
+            is_buyer = deal_buyer == user_id
+            is_seller = seller_uid is not None and deal_channel == seller_uid
 
             if not is_buyer and not is_seller:
                 continue
@@ -1829,7 +1839,6 @@ def api_get_deals():
                     allowed = ["cancel"]
                 elif is_seller:
                     allowed = ["accept", "reject"]
-
             elif deal_status == "accepted":
                 if is_buyer:
                     allowed = ["mark_paid"]
@@ -1837,10 +1846,9 @@ def api_get_deals():
             deal["allowed_actions"] = allowed
             filtered.append(deal)
 
-        return jsonify({
-            "success": True,
-            "data": filtered
-        })
+        filtered.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+
+        return jsonify({"success": True, "data": filtered})
 
     except Exception as e:
         logger.error(f"Deals error: {e}")
