@@ -720,7 +720,11 @@
     }
 
     function renderDeals(deals) {
-      const container = document.getElementById("dealsContainer");
+      const container = document.getElementById("dealList");
+      if (!container) {
+        console.error("dealList container not found");
+        return;
+      }
       container.innerHTML = "";
 
       if (!deals || deals.length === 0) {
