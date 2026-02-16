@@ -1766,29 +1766,24 @@ def api_get_campaigns():
 # DEALS API
 # -----------------------------------------------------------------------------
 
-@flask_app.route('/api/deals', methods=['GET'])
-@rate_limit()
+@flask_app.route("/api/deals", methods=["GET"])
 def api_get_deals():
     try:
+        if supabase is None:
+            return jsonify({"success": False, "error": "Database not configured"}), 503
+
         telegram_id = request.args.get("telegram_id")
+        user_channel_uuid = request.args.get("user_channel_uuid")
 
         if not telegram_id:
-            return jsonify({
-                "success": False,
-                "error": "Missing telegram_id",
-                "data": []
-            }), 400
+            return jsonify({"success": False, "error": "Missing telegram_id", "data": []}), 400
 
         try:
             telegram_id = int(telegram_id)
         except ValueError:
-            return jsonify({
-                "success": False,
-                "error": "Invalid telegram_id",
-                "data": []
-            }), 400
+            return jsonify({"success": False, "error": "Invalid telegram_id", "data": []}), 400
 
-        # Find internal user UUID
+        # Get internal user UUID
         user_res = supabase.table("app_users") \
             .select("id") \
             .eq("telegram_id", telegram_id) \
@@ -1796,41 +1791,39 @@ def api_get_deals():
             .execute()
 
         if not user_res.data:
-            return jsonify({
-                "success": True,
-                "data": []
-            })
+            return jsonify({"success": True, "data": []})
 
         user_id = user_res.data.get("id")
 
-        # Optional channel filter passed from frontend
-        user_channel_uuid = request.args.get("user_channel_uuid")
-
-        # Build safe query
+        # Fetch deals where user is buyer OR seller (channel owner)
         query = supabase.table("deals") \
-            .select("*, campaign_id, channel_id, buyer_id, status, created_at")
+            .select("id, amount, status, created_at, buyer_id, channel_id") \
+            .or_(f"buyer_id.eq.{user_id},channel_id.eq.{user_channel_uuid}") \
+            .order("created_at", desc=True)
 
-        if user_channel_uuid:
-            # Only add OR filter if channel UUID provided
-            query = query.or_(f"buyer_id.eq.{user_id},channel_id.eq.{user_channel_uuid}")
-        else:
-            query = query.eq("buyer_id", user_id)
-
-        res = query.order("created_at", desc=True).execute()
-
+        res = query.execute()
         deals = res.data if res.data else []
 
+        # Attach correct allowed actions
         for deal in deals:
             allowed = []
 
-            if deal["status"] == "pending":
-                if deal["buyer_id"] == user_id:
+            deal_buyer_id = deal.get("buyer_id")
+            deal_channel_id = deal.get("channel_id")
+            deal_status = deal.get("status")
+
+            is_buyer = str(deal_buyer_id) == str(user_id)
+            is_seller = user_channel_uuid and str(deal_channel_id) == str(user_channel_uuid)
+
+            if deal_status == "pending":
+                if is_buyer:
                     allowed = ["cancel"]
-                else:
+                elif is_seller:
                     allowed = ["accept", "reject"]
 
-            elif deal["status"] == "accepted":
-                allowed = ["mark_paid"]
+            elif deal_status == "accepted":
+                if is_buyer:
+                    allowed = ["mark_paid"]
 
             deal["allowed_actions"] = allowed
 
@@ -1841,7 +1834,7 @@ def api_get_deals():
 
     except Exception as e:
         logger.error(f"Get deals error: {e}")
-        return json_response(False, error=str(e), status=500)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @flask_app.route('/api/leaderboard/monthly', methods=['GET'])
