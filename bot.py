@@ -2339,21 +2339,25 @@ def api_deal_action():
             return jsonify({"success": False, "error": "Deal not found"}), 404
 
         deal = deals[0]
+        # Determine role
         role = None
 
         if deal.get("buyer_id") == current_user_id:
             role = "advertiser"
         else:
-            owner_channel_res = (
-                supabase.table("channels")
-                .select("id")
-                .eq("owner_id", current_user_id)
-                .eq("id", deal.get("channel_id"))
-                .limit(1)
-                .execute()
-            )
-            if owner_channel_res.data:
-                role = "owner"
+            channel_id = deal["channel_id"]
+            if channel_id:
+                owner_channel_res = (
+                    supabase.table("channels")
+                    .select("id")
+                    .eq("id", channel_id)
+                    .eq("owner_id", current_user_id)
+                    .limit(1)
+                    .execute()
+                )
+
+                if owner_channel_res.data:
+                    role = "owner"
 
         if role is None:
             return jsonify({"success": False, "error": "Forbidden"}), 403
