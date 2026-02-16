@@ -1537,7 +1537,7 @@ def api_upload_media():
             return json_response(False, error="Invalid file", status=400)
 
         if filename.endswith(('.png','.jpg','.jpeg','.webp','.gif')):
-            media_type = "photo"
+            media_type = "image"
         elif filename.endswith(('.mp4','.mov','.avi','.mkv')):
             media_type = "video"
         else:
@@ -1553,6 +1553,9 @@ def api_upload_media():
 
         public = supabase.storage.from_("ads").get_public_url(unique_name)
         public_url = public.get("publicUrl") or public.get("public_url") or public.get("data") if isinstance(public, dict) else public
+
+        if not isinstance(public_url, str) or not public_url.startswith(("http://", "https://")):
+            return json_response(False, error="Failed to generate public media URL", status=500)
 
         return json_response(True, data={"media_type": media_type, "media_url": public_url})
 
@@ -1757,6 +1760,32 @@ def api_get_campaigns():
 
 @flask_app.route("/api/deals", methods=["GET"])
 def api_get_deals():
+    def ensure_public_media_url(raw_url: Optional[str]) -> Optional[str]:
+        if not raw_url:
+            return None
+
+        if isinstance(raw_url, str) and raw_url.startswith(("http://", "https://")):
+            return raw_url
+
+        if supabase is None:
+            return raw_url
+
+        normalized_path = str(raw_url).strip().lstrip("/")
+        if "/storage/v1/object/public/ads/" in normalized_path:
+            normalized_path = normalized_path.split("/storage/v1/object/public/ads/", 1)[1]
+        elif normalized_path.startswith("ads/"):
+            normalized_path = normalized_path[4:]
+
+        if not normalized_path:
+            return None
+
+        try:
+            public = supabase.storage.from_("ads").get_public_url(normalized_path)
+            public_url = public.get("publicUrl") or public.get("public_url") or public.get("data") if isinstance(public, dict) else public
+            return public_url if isinstance(public_url, str) and public_url.startswith(("http://", "https://")) else None
+        except Exception:
+            return None
+
     try:
         if supabase is None:
             return jsonify({"success": False, "error": "Database not configured", "data": []}), 503
@@ -1801,7 +1830,7 @@ def api_get_deals():
 
         deals_res = (
             supabase.table("deals")
-            .select("*")
+            .select("id, amount, status, buyer_id, channel_id, media_url, media_type, created_at")
             .or_(filter_str)
             .order("created_at", desc=True)
             .execute()
@@ -1820,13 +1849,20 @@ def api_get_deals():
             else:
                 role = "advertiser"
 
+            media_url = ensure_public_media_url(deal.get("media_url"))
+            media_type = deal.get("media_type")
+
             enriched_deals.append({
-                **deal,
+                "id": deal.get("id"),
+                "amount": deal.get("amount"),
+                "status": status,
                 "role": role,
                 "label": DealStateMachine.get_label(status),
                 "step": DealStateMachine.get_step(status),
                 "is_terminal": DealStateMachine.is_terminal(status),
                 "allowed_actions": get_role_allowed_actions(status, role),
+                "media_url": media_url,
+                "media_type": media_type,
             })
 
         return jsonify({"success": True, "data": enriched_deals})
@@ -1940,11 +1976,16 @@ def api_create_deal():
         if not user_id:
             return json_response(False, error="User not found", status=400)
 
+        deal_media_url = data.get("media_url")
+        deal_media_type = data.get("media_type")
+
         res = supabase.table("deals").insert({
             "campaign_id": campaign_id,
             "channel_id": channel_id,
             "buyer_id": user_id,
             "amount": amount,
+            "media_url": deal_media_url,
+            "media_type": deal_media_type,
             "status": "pending"
         }).execute()
 
