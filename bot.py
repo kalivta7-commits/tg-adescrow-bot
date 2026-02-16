@@ -1780,18 +1780,31 @@ def api_get_single_deal(deal_id):
 def api_create_deal():
     try:
         data = request.get_json() or {}
+
         campaign_id = data.get("campaign_id")
         channel_id = data.get("channel_id")
         amount = data.get("amount")
+        telegram_id = data.get("telegram_id")
 
-        if not campaign_id or not channel_id or not amount:
-            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        if not campaign_id or not channel_id or not amount or not telegram_id:
+            return jsonify({
+                "success": False,
+                "error": "Missing required fields"
+            }), 400
 
-        # campaign_id is UUID → keep as string
+        # UUID fields → keep as string
         campaign_id = str(campaign_id)
-        channel_id = int(channel_id)
-        amount = int(amount)
-        telegram_id = int(data.get("telegram_id"))
+        channel_id = str(channel_id)
+
+        # Numeric fields → convert safely
+        try:
+            amount = int(amount)
+            telegram_id = int(telegram_id)
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "error": "Invalid numeric values"
+            }), 400
 
         user_id = get_user_id(telegram_id)
         if not user_id:
