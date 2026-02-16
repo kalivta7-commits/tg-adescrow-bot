@@ -1752,83 +1752,47 @@ def api_get_deals():
         if supabase is None:
             return jsonify({"success": False, "error": "Database not configured", "data": []}), 503
 
-        telegram_id = request.args.get("telegram_id")
-        user_channel_uid = request.args.get("user_channel_uid")
-
-        if not telegram_id:
+        telegram_id_raw = request.args.get("telegram_id")
+        if telegram_id_raw is None or str(telegram_id_raw).strip() == "":
             return jsonify({"success": False, "error": "Missing telegram_id", "data": []}), 400
 
-        telegram_id = int(telegram_id)
+        try:
+            telegram_id = int(telegram_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "telegram_id must be an integer", "data": []}), 400
 
         user_res = supabase.table("app_users") \
             .select("id") \
             .eq("telegram_id", telegram_id) \
-            .single() \
+            .limit(1) \
             .execute()
 
         if not user_res.data:
             return jsonify({"success": True, "data": []})
 
-        user_id = str(user_res.data["id"])
+        user_id = user_res.data[0]["id"]
 
-        buyer_res = supabase.table("deals") \
+        channels_res = supabase.table("channels") \
+            .select("id") \
+            .eq("owner_id", user_id) \
+            .execute()
+
+        channel_ids = [str(channel["id"]) for channel in (channels_res.data or []) if channel.get("id") is not None]
+
+        filters = [f"buyer_id.eq.{user_id}"]
+        if channel_ids:
+            filters.append(f"channel_id.in.({','.join(channel_ids)})")
+
+        filter_str = ",".join(filters)
+
+        deals_res = supabase.table("deals") \
             .select("*") \
-            .eq("buyer_id", user_id) \
+            .or_(filter_str) \
             .order("created_at", desc=True) \
             .execute()
-        buyer_deals = buyer_res.data if buyer_res.data else []
 
-        seller_deals = []
-        if user_channel_uid:
-            seller_res = supabase.table("deals") \
-                .select("*") \
-                .eq("channel_id", user_channel_uid) \
-                .order("created_at", desc=True) \
-                .execute()
-            seller_deals = seller_res.data if seller_res.data else []
-
-        merged = buyer_deals + seller_deals
-
-        deduped = []
-        seen_ids = set()
-        for deal in merged:
-            deal_id = str(deal.get("id"))
-            if deal_id in seen_ids:
-                continue
-            seen_ids.add(deal_id)
-            deduped.append(deal)
-
-        filtered = []
-        seller_uid = str(user_channel_uid) if user_channel_uid else None
-
-        for deal in deduped:
-            deal_buyer = str(deal.get("buyer_id"))
-            deal_channel = str(deal.get("channel_id"))
-            deal_status = deal.get("status")
-
-            is_buyer = deal_buyer == user_id
-            is_seller = seller_uid is not None and deal_channel == seller_uid
-
-            if not is_buyer and not is_seller:
-                continue
-
-            allowed = []
-
-            if deal_status == "pending":
-                if is_buyer:
-                    allowed = ["cancel"]
-                elif is_seller:
-                    allowed = ["accept", "reject"]
-            elif deal_status == "accepted":
-                if is_buyer:
-                    allowed = ["mark_paid"]
-
-            deal["allowed_actions"] = allowed
-            filtered.append(deal)
-
-        filtered.sort(key=lambda d: d.get("created_at") or "", reverse=True)
-
-        return jsonify({"success": True, "data": filtered})
+        deals = deals_res.data or []
+        return jsonify({"success": True, "data": deals})
 
     except Exception as e:
         logger.error(f"Deals error: {e}")
