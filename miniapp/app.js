@@ -518,7 +518,11 @@
 
             var res = await apiPost('/api/campaign/create', campaignPayload);
 
-            var createdCampaign = safeObj((res && res.data && res.data.campaign) || (res && res.data));
+            var createdCampaign = safeObj(res && res.data);
+
+            if (!createdCampaign || !createdCampaign.id) {
+                throw new Error("Campaign creation response missing id");
+            }
             if (!(res && res.success === true && createdCampaign && createdCampaign.id)) {
                 throw new Error(res && res.error ? res.error : 'Failed to create campaign');
             }
@@ -545,7 +549,7 @@
                     throw new Error('Invalid channel amount for channel #' + channelId);
                 }
 
-                var selectedCampaign = { id: Number(createdCampaign.id) };
+                var selectedCampaign = { id: createdCampaign.id };
                 var selectedChannel = { id: Number(channelId) };
                 return submitDeal(selectedCampaign, selectedChannel, amount);
             });
