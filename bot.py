@@ -1477,43 +1477,14 @@ def api_upload_media():
 @rate_limit()
 def api_auth():
     try:
-        if supabase is None:
-            return json_response(False, error='Database not configured', status=503)
-            
         data = request.get_json() or {}
-        telegram_id = data.get('telegram_id')
-
-        if not telegram_id:
-            return json_response(False, error='telegram_id is required', status=400)
-
-        username = data.get('username')
-
-        # Check if user exists
-        user_resp = supabase.table("app_users").select("*").eq("telegram_id", telegram_id).execute()
-        if user_resp.data:
-            user = user_resp.data[0]
-            update_resp = supabase.table("app_users").update({
-                "username": username
-            }).eq("id", user["id"]).execute()
-            if update_resp.data:
-                user = update_resp.data[0]
-        else:
-            # Create new user
-            insert_resp = supabase.table("app_users").insert({
-                "telegram_id": telegram_id,
-                "username": username,
-                "role": "user"
-            }).execute()
-            if insert_resp.data:
-                user = insert_resp.data[0]
-                logger.info(f"API: Auto-registered user {telegram_id}")
-            else:
-                return json_response(False, error='Failed to create user', status=500)
-
-        return json_response(True, data={'user': user})
-
+        telegram_id = int(data.get('telegram_id'))
+        user_id = get_user_id(telegram_id)
+        if not user_id:
+            return json_response(False, error="User creation failed", status=400)
+        return json_response(True, data={"user": {"id": user_id}})
     except Exception as e:
-        logger.error(f"Error in auth: {e}")
+        logger.error(f"Auth error: {e}")
         return json_response(False, error=str(e), status=500)
 
 
@@ -1667,89 +1638,53 @@ def api_create_channel():
 def api_create_campaign():
     try:
         data = request.get_json() or {}
+        telegram_id = int(data.get("telegram_id"))
+        user_id = get_user_id(telegram_id)
+        if not user_id:
+            return json_response(False, error="User not found", status=400)
 
-        title = str(data.get('title') or '').strip()
-        text = str(data.get('text') or '').strip()
-        budget_raw = data.get('budget')
-        telegram_id = data.get("telegram_id")
+        title = data.get("title")
+        description = data.get("text")
+        budget = float(data.get("budget", 0))
 
-        try:
-            telegram_id = int(telegram_id)
-        except (TypeError, ValueError):
-            return json_response(False, error="telegram_id must be a valid integer", status=400)
-
-        if not title:
-            return jsonify({'success': False, 'error': 'title: is required'}), 400
-
-        if len(title) < 3:
-            return jsonify({'success': False, 'error': 'title: must be at least 3 characters'}), 400
-
-        if not text:
-            return jsonify({'success': False, 'error': 'text: is required'}), 400
-
-        if len(text) < 10:
-            return jsonify({'success': False, 'error': 'text: must be at least 10 characters'}), 400
-
-        try:
-            budget = float(budget_raw)
-        except (TypeError, ValueError):
-            return jsonify({'success': False, 'error': 'budget: must be a valid number'}), 400
-
-        if budget <= 0:
-            return jsonify({'success': False, 'error': 'budget: must be greater than 0'}), 400
-
-        if supabase is None:
-            return json_response(False, error='Database not configured', status=503)
-
-        # Resolve advertiser_id from telegram_id
-        user_lookup = (
-            supabase.table("app_users")
-            .select("id")
-            .eq("telegram_id", telegram_id)
-            .single()
-            .execute()
-        )
-
-        if not user_lookup.data:
-            return json_response(False, error="User not registered", status=404)
-
-        advertiser_id = user_lookup.data["id"]
-
-        # Create campaign
-        campaign_resp = supabase.table("campaigns").insert({
-            "advertiser_id": advertiser_id,
+        res = supabase.table("campaigns").insert({
+            "advertiser_id": user_id,
             "title": title,
-            "text": text,
+            "description": description,
             "budget": budget,
             "status": "pending"
         }).execute()
 
-        if not campaign_resp.data:
-            return jsonify({'success': False, 'error': 'Failed to create campaign'}), 500
+        if not res.data:
+            return json_response(False, error="Insert failed", status=400)
 
-        campaign = campaign_resp.data[0]
-        campaign_id = campaign['id']
-        logger.info(f"API: Created campaign {campaign_id} - {title}")
-
-        return jsonify({
-            'success': True,
-            'campaign_id': campaign_id,
-            'message': 'Campaign created',
-            'data': {
-                'campaign': {
-                    'id': campaign_id,
-                    'advertiser_id': advertiser_id,
-                    'title': title,
-                    'text': text,
-                    'budget': budget,
-                    'status': 'pending'
-                }
-            }
-        }), 200
+        return json_response(True, data=res.data[0])
 
     except Exception as e:
-        logger.error(f"Error creating campaign: {e}")
-        return jsonify({'success': False, 'error': f'campaign_create: {str(e)}'}), 500
+        logger.error(f"Campaign create error: {e}")
+        return json_response(False, error=str(e), status=500)
+
+
+@flask_app.route('/api/campaigns', methods=['GET'])
+@rate_limit()
+def api_get_campaigns():
+    try:
+        telegram_id = int(request.args.get("telegram_id"))
+        user_id = get_user_id(telegram_id)
+        if not user_id:
+            return json_response(False, error="User not found", status=400)
+
+        res = supabase.table("campaigns")\
+            .select("id, title, description, budget, status, created_at")\
+            .eq("advertiser_id", user_id)\
+            .order("created_at", desc=True)\
+            .execute()
+
+        return json_response(True, data=res.data)
+
+    except Exception as e:
+        logger.error(f"Get campaigns error: {e}")
+        return json_response(False, error=str(e), status=500)
 
 
 # -----------------------------------------------------------------------------
@@ -1758,39 +1693,24 @@ def api_create_campaign():
 
 @flask_app.route('/api/deals', methods=['GET'])
 @rate_limit()
-def get_deals():
+def api_get_deals():
     try:
-        telegram_id = request.args.get("telegram_id")
+        telegram_id = int(request.args.get("telegram_id"))
+        user_id = get_user_id(telegram_id)
+        if not user_id:
+            return json_response(False, error="User not found", status=400)
 
-        if not telegram_id:
-            return jsonify({"error": "telegram_id is required"}), 400
-
-        telegram_id_int = int(telegram_id)
-
-        user_lookup = (
-            supabase.table("app_users")
-            .select("id")
-            .eq("telegram_id", telegram_id_int)
-            .single()
+        res = supabase.table("deals") \
+            .select("id, amount, status, created_at") \
+            .eq("buyer_id", user_id) \
+            .order("created_at", desc=True) \
             .execute()
-        )
 
-        if not user_lookup.data:
-            return jsonify({"error": "User not registered"}), 404
-
-        user_id = user_lookup.data["id"]
-
-        deals = (
-            supabase.table("deals")
-            .select("*")
-            .eq("buyer_id", user_id)
-            .execute()
-        )
-
-        return jsonify(deals.data), 200
+        return json_response(True, data=res.data)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Get deals error: {e}")
+        return json_response(False, error=str(e), status=500)
 
 
 @flask_app.route('/api/leaderboard/monthly', methods=['GET'])
@@ -1865,141 +1785,32 @@ def api_get_single_deal(deal_id):
 @flask_app.route('/api/deals', methods=['POST'])
 @rate_limit()
 def api_create_deal():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     try:
         data = request.get_json() or {}
-        logger.info(f"Incoming deal payload: {data}")
+        campaign_id = int(data.get("campaign_id"))
+        channel_id = int(data.get("channel_id"))
+        amount = float(data.get("amount"))
+        telegram_id = int(data.get("telegram_id"))
 
-        if supabase is None:
-            return json_response(False, error='Supabase is not configured', status=503)
-
-        campaign_id = data.get('campaign_id')
-        channel_id = data.get('channel_id')
-        buyer_telegram_id = data.get('telegram_id')
-        message = data.get('message')
-        amount_raw = data.get('amount')
-
-        missing_fields = [
-            field_name for field_name, value in {
-                'campaign_id': campaign_id,
-                'channel_id': channel_id,
-                'telegram_id': buyer_telegram_id,
-                'amount': amount_raw,
-            }.items() if value in (None, '')
-        ]
-        if missing_fields:
-            return json_response(False, error=f"Missing required fields: {', '.join(missing_fields)}", status=400)
-
-        try:
-            amount = float(amount_raw)
-        except (TypeError, ValueError):
-            return json_response(False, error='amount must be a valid number', status=400)
-
-        try:
-            campaign_id = int(campaign_id)
-        except (TypeError, ValueError):
-            return json_response(False, error='campaign_id must be a valid integer', status=400)
-
-        try:
-            channel_id = int(channel_id)
-        except (TypeError, ValueError):
-            return json_response(False, error='channel_id must be a valid integer', status=400)
-
-        try:
-            buyer_telegram_id = int(buyer_telegram_id)
-        except (TypeError, ValueError):
-            return json_response(False, error='telegram_id must be a valid integer', status=400)
-
-        if campaign_id <= 0:
-            return json_response(False, error='campaign_id is required', status=400)
-        if channel_id == 0:
-            return json_response(False, error='channel_id is required', status=400)
-        if buyer_telegram_id <= 0:
-            return json_response(False, error='telegram_id must be greater than 0', status=400)
-        if amount <= 0:
-            return json_response(False, error='amount must be greater than 0', status=400)
-
-        try:
-            buyer_lookup = (
-                supabase.table('app_users')
-                .select('id')
-                .eq('telegram_id', buyer_telegram_id)
-                .limit(1)
-                .execute()
-            )
-        except Exception as user_lookup_error:
-            logger.error(
-                "Failed to resolve app_users.id for telegram_id=%s: %s",
-                buyer_telegram_id,
-                user_lookup_error
-            )
-            return json_response(False, error='Failed to resolve user', status=500)
-
-        if not buyer_lookup.data:
-            return jsonify({'error': 'User not registered'}), 404
-
-        buyer_id = buyer_lookup.data[0]['id']
-        if not isinstance(buyer_id, int):
-            logger.error(
-                "Resolved buyer_id has invalid type for telegram_id=%s. buyer_id=%s",
-                buyer_telegram_id,
-                buyer_id
-            )
-            return json_response(False, error='Failed to resolve user', status=500)
-
-        logger.info(f"Resolved buyer_id={buyer_id} from telegram_id={buyer_telegram_id}")
-
-        try:
-            channel_row = (
-                supabase.table("channels")
-                .select("id")
-                .eq("telegram_channel_id", channel_id)
-                .single()
-                .execute()
-            )
-        except Exception as channel_lookup_error:
-            logger.error(
-                f"Failed to resolve channel UUID for telegram_channel_id={channel_id}: {channel_lookup_error}"
-            )
-            return json_response(False, error='Failed to resolve channel', status=500)
-
-        channel_data = channel_row.data or {}
-        channel_uuid = channel_data.get('id')
-        if not channel_uuid:
-            return json_response(False, error='Channel not found', status=404)
-
-        escrow_address = os.getenv('ESCROW_WALLET_ADDRESS')
-        data = request.json
-        telegram_id = data.get("telegram_id")
-
-        # Get user UUID from app_users
-        user_lookup = supabase.table("app_users") \
-            .select("id") \
-            .eq("telegram_id", int(telegram_id)) \
-            .single() \
-            .execute()
-
-        if not user_lookup.data:
-            return jsonify({"error": "User not registered"}), 404
-
-        user_id = user_lookup.data["id"]
-
-        channel_id = data.get("channel_id")
+        user_id = get_user_id(telegram_id)
+        if not user_id:
+            return json_response(False, error="User not found", status=400)
 
         res = supabase.table("deals").insert({
-            "buyer_id": user_id,
+            "campaign_id": campaign_id,
             "channel_id": channel_id,
+            "buyer_id": user_id,
             "amount": amount,
-            "status": "waiting_payment",
-            "escrow_address": escrow_address
+            "status": "pending"
         }).execute()
 
-        return jsonify(res.data), 201
+        if not res.data:
+            return json_response(False, error="Deal insert failed", status=400)
+
+        return json_response(True, data=res.data[0])
 
     except Exception as e:
-        logger.error(f"Error creating deal: {e}")
+        logger.error(f"Deal create error: {e}")
         return json_response(False, error=str(e), status=500)
 
 

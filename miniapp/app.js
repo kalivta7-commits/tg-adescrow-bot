@@ -247,43 +247,53 @@
 
     // Refresh deals with smart update (only update UI if data changed)
     function refreshDeals() {
-        if (!State.user || !State.user.id) {
-            return;
-        }
-
-        var telegramUserId = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user
-            ? window.Telegram.WebApp.initDataUnsafe.user.id
-            : 0;
-        var telegramId = Number(telegramUserId);
-        if (!Number.isFinite(telegramId) || telegramId <= 0) {
-            toast('Telegram authentication failed', 'error');
-            return;
-        }
+        var telegramId = State.user && State.user.id ? State.user.id : 0;
+        if (!telegramId) return;
 
         apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
             .then(function (res) {
-                var deals = safeArray(res && res.data && res.data.deals);
-                if (res && res.success === true && deals.length >= 0) {
-                    // Create hash to detect changes
-                    var newHash = JSON.stringify(deals.map(function (d) {
-                        var deal = safeObj(d);
-                        return toText(deal.id, '0') + ':' + toText(deal.status, 'pending');
-                    }));
+                var deals = safeArray(res && res.data);
 
-                    if (newHash !== State.lastDealHash) {
-                        State.deals = deals;
-                        State.lastDealHash = newHash;
-                        renderDeals();
-                        console.log('[Polling] Deals updated');
-                    }
-                } else {
-                    State.deals = [];
-                    State.lastDealHash = null;
+                // Create hash to detect changes
+                var newHash = JSON.stringify(deals.map(function (d) {
+                    var deal = safeObj(d);
+                    return toText(deal.id, '0') + ':' + toText(deal.status, 'pending');
+                }));
+
+                if (newHash !== State.lastDealHash) {
+                    State.deals = deals;
+                    State.lastDealHash = newHash;
                     renderDeals();
+                    console.log('[Polling] Deals updated');
                 }
             })
             .catch(function (e) {
-                console.log('[Polling] Error:', e);
+                console.error('Deals fetch error', e);
+                State.deals = [];
+                State.lastDealHash = null;
+                renderDeals();
+            });
+    }
+
+    function submitDeal(selectedCampaign, selectedChannel, amountValue) {
+        var payload = {
+            telegram_id: State.user.id,
+            campaign_id: selectedCampaign.id,
+            channel_id: selectedChannel.id,
+            amount: Number(amountValue)
+        };
+
+        return apiPost('/api/deal/create', payload)
+            .then(function (res) {
+                if (res && res.data) {
+                    console.log('Deal created:', res.data);
+                    return res.data;
+                }
+                throw new Error((res && res.error) || 'Failed to create deal');
+            })
+            .catch(function (err) {
+                console.error('Create deal', err);
+                throw err;
             });
     }
 
@@ -534,20 +544,9 @@
                     throw new Error('Invalid channel amount for channel #' + channelId);
                 }
 
-                var dealPayload = {
-                    campaign_id: Number(createdCampaign.id),
-                    channel_id: Number(channelId),
-                    amount: Number(amount),
-                    telegram_id: telegramId
-                };
-                console.log('Deal payload:', dealPayload);
-
-                return apiPost('/api/deal/create', dealPayload).then(function (dealRes) {
-                    if (!(dealRes && dealRes.success === true && dealRes.data)) {
-                        throw new Error(dealRes && dealRes.error ? dealRes.error : 'Failed to create deal');
-                    }
-                    return dealRes.data;
-                });
+                var selectedCampaign = { id: Number(createdCampaign.id) };
+                var selectedChannel = { id: Number(channelId) };
+                return submitDeal(selectedCampaign, selectedChannel, amount);
             });
 
             await Promise.all(dealPromises);
@@ -716,7 +715,7 @@
 
         apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
             .then(function (res) {
-                State.deals = res && res.success === true ? safeArray(res && res.data && res.data.deals) : [];
+                State.deals = safeArray(res && res.data);
                 renderDeals();
             })
             .catch(function (e) {
