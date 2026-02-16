@@ -1593,8 +1593,8 @@ def api_get_channels():
             except (TypeError, ValueError):
                 return jsonify({'success': False, 'error': 'telegram_id must be an integer'}), 400
 
-        # Build Supabase query
-        query = supabase.table("channels").select("id, owner_id, telegram_channel_id, username, public_link, name, category, price, subscribers, avg_views, total_deals, completed_deals, created_at")
+        # Build Supabase query (select all channel fields)
+        query = supabase.table("channels").select("*")
         
         if owner_only:
             query = query.eq("owner_id", owner_id)
@@ -1602,27 +1602,7 @@ def api_get_channels():
             query = query.eq("verified", 1)
         
         resp = query.order("subscribers", desc=True).execute()
-        rows = resp.data or []
-
-        channels = []
-        for row in rows:
-            total = row.get('total_deals') or 0
-            completed = row.get('completed_deals') or 0
-            success_rate = 0
-            if total > 0:
-                success_rate = round((completed / total) * 100, 2)
-
-            channels.append({
-                "id": row["id"],
-                "telegram_channel_id": row["telegram_channel_id"],
-                "name": row["name"],
-                "username": row["username"],
-                "price": row["price"],
-                "subscribers": row["subscribers"],
-                "avg_views": row["avg_views"],
-                "category": row["category"],
-                "public_link": row["public_link"],
-            })
+        channels = resp.data or []
 
         return jsonify({'success': True, 'data': channels}), 200
 
