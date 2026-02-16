@@ -1820,6 +1820,20 @@ def api_get_deals():
 
         deals = res.data if res.data else []
 
+        for deal in deals:
+            allowed = []
+
+            if deal["status"] == "pending":
+                if deal["buyer_id"] == user_id:
+                    allowed = ["cancel"]
+                else:
+                    allowed = ["accept", "reject"]
+
+            elif deal["status"] == "accepted":
+                allowed = ["mark_paid"]
+
+            deal["allowed_actions"] = allowed
+
         return jsonify({
             "success": True,
             "data": deals
