@@ -1798,22 +1798,25 @@ def api_get_deals():
         # Fetch deals where user is buyer OR seller (channel owner)
         query = supabase.table("deals") \
             .select("id, amount, status, created_at, buyer_id, channel_id") \
-            .or_(f"buyer_id.eq.{user_id},channel_id.eq.{user_channel_uuid}") \
             .order("created_at", desc=True)
 
         res = query.execute()
         deals = res.data if res.data else []
 
-        # Attach correct allowed actions
-        for deal in deals:
-            allowed = []
+        filtered = []
 
-            deal_buyer_id = deal.get("buyer_id")
-            deal_channel_id = deal.get("channel_id")
+        for deal in deals:
+            deal_buyer = deal.get("buyer_id")
+            deal_channel = deal.get("channel_id")
             deal_status = deal.get("status")
 
-            is_buyer = str(deal_buyer_id) == str(user_id)
-            is_seller = user_channel_uuid and str(deal_channel_id) == str(user_channel_uuid)
+            is_buyer = str(deal_buyer) == str(user_id)
+            is_seller = user_channel_uuid and str(deal_channel) == str(user_channel_uuid)
+
+            if not is_buyer and not is_seller:
+                continue
+
+            allowed = []
 
             if deal_status == "pending":
                 if is_buyer:
@@ -1826,15 +1829,16 @@ def api_get_deals():
                     allowed = ["mark_paid"]
 
             deal["allowed_actions"] = allowed
+            filtered.append(deal)
 
         return jsonify({
             "success": True,
-            "data": deals
+            "data": filtered
         })
 
     except Exception as e:
-        logger.error(f"Get deals error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"Deals error: {e}")
+        return jsonify({"success": False, "error": str(e), "data": []}), 500
 
 
 @flask_app.route('/api/leaderboard/monthly', methods=['GET'])
