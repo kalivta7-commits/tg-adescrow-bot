@@ -1821,6 +1821,40 @@ def api_create_deal():
         if not res.data:
             return json_response(False, error="Deal insert failed", status=400)
 
+        deal = res.data[0]
+
+        # send notifications
+
+        # get seller via channel
+        seller_row = supabase.table("channels") \
+            .select("owner_id") \
+            .eq("id", channel_id) \
+            .single() \
+            .execute()
+
+        seller_telegram_id = seller_row.data.get("owner_id") if seller_row.data else None
+
+        # notify seller
+        if seller_telegram_id:
+            dispatch_background_async(
+                send_deal_notification(
+                    seller_telegram_id,
+                    deal["id"],
+                    amount,
+                    is_seller=True
+                )
+            )
+
+        # notify buyer
+        dispatch_background_async(
+            send_deal_notification(
+                telegram_id,
+                deal["id"],
+                amount,
+                is_seller=False
+            )
+        )
+
         return json_response(True, data=res.data[0])
 
     except Exception as e:
