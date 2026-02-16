@@ -238,9 +238,15 @@
     // Refresh deals with smart update (only update UI if data changed)
     function refreshDeals() {
         var telegramId = State.user && State.user.id ? State.user.id : 0;
+        var channelId = State.user && (State.user.channelId || State.user.channel_id || null);
         if (!telegramId) return;
 
-        apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
+        var url = '/api/deals?telegram_id=' + encodeURIComponent(telegramId);
+        if (channelId) {
+            url += '&user_channel_uid=' + encodeURIComponent(channelId);
+        }
+
+        apiGet(url)
             .then(function (res) {
                 var deals = safeArray(res && res.data);
 
@@ -688,39 +694,48 @@
     }
 
     // Load deals from backend
-    function loadDeals() {
-        if (!State.user || !State.user.id) {
-            State.deals = [];
-            renderDeals();
-            return;
-        }
+    async function loadDeals() {
+        var telegramId = State.user && State.user.id ? Number(State.user.id) : 0;
+        var channelId = State.user && (State.user.channelId || State.user.channel_id || null);
 
-        var telegramUserId = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user
-            ? window.Telegram.WebApp.initDataUnsafe.user.id
-            : 0;
-        var telegramId = Number(telegramUserId);
         if (!Number.isFinite(telegramId) || telegramId <= 0) {
             toast('Telegram authentication failed', 'error');
             State.deals = [];
-            renderDeals();
+            renderDeals([]);
             return;
         }
 
-        apiGet('/api/deals?telegram_id=' + encodeURIComponent(telegramId))
-            .then(function (res) {
-                State.deals = safeArray(res && res.data);
-                renderDeals();
-            })
-            .catch(function (e) {
-                console.log('Error loading deals:', e);
+        var url = '/api/deals?telegram_id=' + encodeURIComponent(telegramId);
+        if (channelId) {
+            url += '&user_channel_uid=' + encodeURIComponent(channelId);
+        }
+
+        try {
+            var res = await fetch(url);
+            var result = await res.json();
+
+            if (!result.success) {
+                console.error('Failed to fetch deals', result.error);
                 State.deals = [];
-                renderDeals();
-            });
+                renderDeals([]);
+                return;
+            }
+
+            var deals = safeArray(result.data);
+            renderDeals(deals);
+        } catch (e) {
+            console.log('Error loading deals:', e);
+            State.deals = [];
+            renderDeals([]);
+        }
     }
 
     // Render deals with timeline and state machine info
-    function renderDeals() {
+    function renderDeals(dealsInput) {
         var container = document.getElementById('dealList');
+        if (dealsInput !== undefined) {
+            State.deals = safeArray(dealsInput);
+        }
         var deals = safeArray(State.deals);
 
         if (State.dealFilter !== 'all') {
