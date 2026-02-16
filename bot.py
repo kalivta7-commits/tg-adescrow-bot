@@ -740,6 +740,15 @@ class DealStateMachine:
         return cls.TRANSITIONS.get(current_state, [])
 
     @classmethod
+    def next_status(cls, current_state: str, action: str) -> Optional[str]:
+        next_state = DEAL_ACTION_TO_STATE.get(action)
+        if not next_state:
+            return None
+        if not cls.can_transition(current_state, next_state):
+            return None
+        return next_state
+
+    @classmethod
     def is_terminal(cls, state: str) -> bool:
         return state in cls.TERMINAL_STATES
 
@@ -2292,123 +2301,79 @@ def api_mark_ad_posted(deal_id):
 @rate_limit()
 def api_deal_action():
     try:
-        data = request.get_json() or {}
+        if supabase is None:
+            return jsonify({"success": False, "error": "Database not configured"}), 503
 
+        data = request.get_json() or {}
         deal_id = data.get('deal_id')
         action = data.get('action')
-        telegram_id = data.get('user_id')
 
-        if deal_id in (None, ''):
-            return json_response(False, error='deal_id is required', status=400)
-        if not action:
-            return json_response(False, error='action is required', status=400)
-        if telegram_id in (None, ''):
-            return json_response(False, error='user_id is required', status=400)
+        if deal_id in (None, '') or action in (None, ''):
+            return jsonify({"success": False, "error": "Missing parameters"}), 400
+
+        current_user_id = data.get('current_user_id') or data.get('user_id')
+        telegram_id = data.get('telegram_id')
+
+        if current_user_id not in (None, ''):
+            try:
+                current_user_id = int(current_user_id)
+            except (TypeError, ValueError):
+                return jsonify({"success": False, "error": "Invalid user"}), 400
+        elif telegram_id not in (None, ''):
+            try:
+                current_user_id = get_user_id(int(telegram_id))
+            except (TypeError, ValueError):
+                current_user_id = None
+
+        if not current_user_id:
+            return jsonify({"success": False, "error": "Forbidden"}), 403
 
         try:
             deal_id = int(deal_id)
         except (TypeError, ValueError):
-            return json_response(False, error='deal_id must be a valid integer', status=400)
+            return jsonify({"success": False, "error": "Invalid deal_id"}), 400
 
-        try:
-            telegram_id = int(telegram_id)
-        except (TypeError, ValueError):
-            return json_response(False, error='user_id must be a valid telegram id integer', status=400)
+        deal_res = supabase.table("deals").select("*").eq("id", deal_id).limit(1).execute()
+        deals = deal_res.data or []
+        if not deals:
+            return jsonify({"success": False, "error": "Deal not found"}), 404
 
-        target_state = DEAL_ACTION_TO_STATE.get(action)
-        if not target_state:
-            return json_response(False, error='Invalid action', status=400)
+        deal = deals[0]
+        role = None
 
-        # 1. Get User ID
-        try:
-            user_res = supabase.table("app_users").select("id").eq("telegram_id", telegram_id).execute()
-            if not user_res.data:
-                 return json_response(False, error='User not found', status=404)
-            db_user_id = user_res.data[0]['id']
-        except Exception as e:
-            logger.error(f"Error fetching user: {e}")
-            return json_response(False, error='User lookup failed', status=500)
-
-        # 2. Get Deal + Campaign + Channel Owner info
-        try:
-            # We need: deal status, campaign advertiser_id, channel owner_id
-            # Join: deals -> campaigns, deals -> channels
-            deal_res = supabase.table("deals").select("""
-                status,
-                campaigns(advertiser_id),
-                channels(owner_id)
-            """).eq("id", deal_id).single().execute()
-            
-            if not deal_res.data:
-                return json_response(False, error='Deal not found', status=404)
-            
-            deal_data = deal_res.data
-            current_status = deal_data['status']
-            
-            # Extract related IDs safely
-            advertiser_id = None
-            if deal_data.get('campaigns'):
-                advertiser_id = deal_data['campaigns'].get('advertiser_id')
-            
-            owner_id = None
-            if deal_data.get('channels'):
-                owner_id = deal_data['channels'].get('owner_id')
-                
-        except Exception as e:
-            logger.error(f"Error fetching deal details: {e}")
-            return json_response(False, error='db error', status=500)
-
-        # 3. Determine Role
-        if advertiser_id == db_user_id:
-            role = 'advertiser'
-        elif owner_id == db_user_id:
-            role = 'owner'
+        if deal.get("buyer_id") == current_user_id:
+            role = "advertiser"
         else:
-            return json_response(False, error='Not authorized - Role mismatch', status=403)
+            owner_channel_res = (
+                supabase.table("channels")
+                .select("id")
+                .eq("owner_id", current_user_id)
+                .eq("id", deal.get("channel_id"))
+                .limit(1)
+                .execute()
+            )
+            if owner_channel_res.data:
+                role = "owner"
 
-        # 4. Check Action Permissions (Role specific)
-        if action == 'fund' and role != 'advertiser':
-            return json_response(False, error='Not authorized', status=403)
+        if role is None:
+            return jsonify({"success": False, "error": "Forbidden"}), 403
 
-        if action in ['accept', 'reject', 'mark_posted', 'delete'] and role != 'owner':
-            return json_response(False, error='Not authorized', status=403)
-
-        if action in ['verify', 'cancel', 'dispute'] and role != 'advertiser':
-            return json_response(False, error='Not authorized', status=403)
-
-        allowed_actions = get_role_allowed_actions(current_status, role)
+        allowed_actions = get_role_allowed_actions(deal.get("status"), role)
         if action not in allowed_actions:
-            return json_response(False, error='Action not allowed in current state', status=409)
+            return jsonify({"success": False, "error": "Action not allowed"}), 400
 
-        # 5. Execute Transition
-        result = transition_deal_state(deal_id, target_state, telegram_id)
-        if not result['success']:
-            status_code = 409 if result.get('conflict') else 400
-            return json_response(False, error=result['error'], status=status_code)
+        new_status = DealStateMachine.next_status(deal.get("status"), action)
+        if not new_status:
+            return jsonify({"success": False, "error": "Action not allowed"}), 400
 
-        # Send notification (fire and forget)
-        if bot_instance and bot_instance.application:
-            try:
-                dispatch_background_async(
-                    send_deal_notification(
-                        bot_instance.application.bot, 
-                        deal_id, 
-                        target_state
-                    ),
-                    task_name=f"deal-notify-{deal_id}-{target_state}"
-                )
-            except:
-                pass
+        supabase.table("deals").update({"status": new_status}).eq("id", deal_id).execute()
 
-        return json_response(True, data={
-            'deal': result['deal'],
-            'old_status': result['old_state'],
-            'new_status': result['new_state']
-        })
+        return jsonify({"success": True})
 
     except Exception as e:
         logger.error(f"Error handling deal action: {e}")
-        return json_response(False, error=str(e), status=500)
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # -----------------------------------------------------------------------------
 # CHANNEL ADMIN MANAGEMENT API
