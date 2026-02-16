@@ -63,9 +63,7 @@ Telegram User (Buyer / Channel Owner)
 Telegram ads are currently trust-based.
 
 Buyer sends money → hopes owner posts ad
-
 Owner posts ad → hopes buyer pays
-
 
 No enforcement.
 No guarantees.
@@ -120,7 +118,8 @@ System automatically:
 
 Release TON → Channel Owner Wallet
 
-Status changes to COMPLETED.
+Status changes to COMPLETED
+
 
 
 ---
@@ -131,7 +130,8 @@ System automatically:
 
 Refund TON → Buyer Wallet
 
-Status changes to REFUNDED.
+Status changes to REFUNDED
+
 
 No disputes.
 No admin manipulation.
@@ -181,7 +181,7 @@ Campaigns support:
 ✅ Scheduled posting
 
 
-Media is stored securely via Supabase storage.
+Media stored securely via Supabase Storage.
 
 Deal UI dynamically displays:
 
@@ -191,7 +191,7 @@ Deal progress
 
 Payment status
 
-Available actions (based on role)
+Available actions (role-based)
 
 
 
@@ -199,7 +199,7 @@ Available actions (based on role)
 
 🔄 Deal State Machine
 
-The system uses deterministic status transitions:
+Deterministic status transitions:
 
 PENDING_APPROVAL
         ↓
@@ -211,7 +211,7 @@ POSTED
         ↓
 COMPLETED
 
-Or timeout path:
+Timeout path:
 
 FUNDED
         ↓
@@ -219,8 +219,7 @@ TIMEOUT
         ↓
 REFUNDED
 
-Every transition is validated server-side.
-
+Every transition validated server-side.
 No invalid states allowed.
 
 
@@ -230,10 +229,8 @@ No invalid states allowed.
 
 Every channel has public performance metrics.
 
-success_rate =
+success_rate = 
 (completed_deals / total_deals) × 100
-
-Displayed in marketplace UI.
 
 Example:
 
@@ -242,14 +239,12 @@ Completed Deals: 142
 Refunds: 6
 Success Rate: 95.9%
 
-This builds long-term trust and incentivizes reliability.
+Builds long-term trust & incentivizes reliability.
 
 
 ---
 
 🏆 Monthly Channel Ranking System
-
-Channels are ranked monthly using weighted performance metrics.
 
 Ranking Factors:
 
@@ -287,7 +282,7 @@ Creates competitive quality-driven ecosystem.
 
 ---
 
-💸 Transaction Flow Chart
+💸 Transaction Flow
 
 Buyer Funds Escrow (TON)
             ↓
@@ -321,9 +316,6 @@ TON locked until conditions satisfied
 Automatic refund protection
 
 
-
----
-
 🔒 Backend Security
 
 Service role key stored securely on Railway
@@ -335,22 +327,16 @@ All transitions validated server-side
 Role-based action validation
 
 
-
----
-
 🧱 Database Security
 
 Supabase PostgreSQL
 
-UUID-based identity system
+UUID-based identity
 
-Row-Level Security (RLS) policies
+Row-Level Security (RLS)
 
 Ownership-based access control
 
-
-
----
 
 🔗 Blockchain Transparency
 
@@ -381,7 +367,7 @@ Time-based enforcement
 Transparent performance metrics
 
 
-This removes the scam vector from Telegram ads.
+Removes scam vector from Telegram ads.
 
 
 ---
@@ -399,7 +385,7 @@ Verified channel badge
 Analytics subscription tools
 
 
-Scalable and sustainable.
+Scalable & sustainable.
 
 
 ---
@@ -417,7 +403,7 @@ Automated payment enforcement
 Scam-resistant ad marketplace
 
 
-This transforms Telegram ads from informal agreements into structured financial contracts.
+Transforms informal agreements into structured financial contracts.
 
 
 ---
@@ -439,23 +425,67 @@ Authentication	Supabase Auth + Telegram
 
 ---
 
+🔜 Roadmap
+
+🚀 Upcoming Enhancements
+
+🔐 TON Connect SDK Integration
+
+Planned upgrade from manual TON tracking to full wallet-based payment flow.
+
+Will enable:
+
+Wallet authentication
+
+Signed transaction verification
+
+Verified sender wallet identity
+
+Secure Mini App payment UX
+
+Backend transaction proof validation
+
+
+This will transition the platform toward a fully Web3-native escrow architecture.
+
+
+---
+
+🔮 Future Expansion Vision
+
+Multi-chain escrow support
+
+AI fraud detection engine
+
+On-chain deal NFTs
+
+DAO-based dispute resolution
+
+Automated ad analytics
+
+Global influencer marketplace
+
+
+
+---
+
 🔥 Competitive Advantage
 
 Unlike traditional Telegram ad deals:
 
-We enforce payment rules automatically
+Payment rules are enforced automatically
 
-We rank channels by performance
+Channels ranked by performance
 
-We protect buyers from fraud
+Buyers protected from fraud
 
-We protect sellers from non-payment
+Sellers protected from non-payment
 
-We use blockchain-backed escrow
+Blockchain-backed escrow
 
 
 This is not just a bot.
-It is a trust infrastructure.
+It is a trust infrastructure layer.
 
 
 ---
@@ -466,21 +496,6 @@ To become:
 
 > The Stripe + Escrow.com layer for Telegram Advertising.
 
-
-
-Future expansions:
-
-Multi-chain escrow
-
-AI fraud detection
-
-On-chain deal NFTs
-
-DAO dispute resolution
-
-Automated ad analytics
-
-Global influencer marketplace
 
 
 
@@ -502,4 +517,3 @@ Fully secure deal lifecycle
 
 
 It transforms Telegram advertising from trust-based chaos into programmable financial certainty.
-
