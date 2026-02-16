@@ -178,21 +178,10 @@
                 });
                 this.classList.add('active');
                 State.dealFilter = this.dataset.filter;
-                renderDeals();
+                renderDeals(State.deals);
             });
         });
         document.getElementById('btnRefresh').addEventListener('click', loadDeals);
-        document.addEventListener('click', function (e) {
-            if (e.target.classList.contains('deal-action-btn')) {
-                var dealId = e.target.dataset.id;
-                var action = e.target.dataset.action;
-
-                apiPost('/api/deal/action', {
-                    deal_id: dealId,
-                    action: action
-                });
-            }
-        });
     }
 
     // Switch between main tabs
@@ -259,7 +248,7 @@
                 if (newHash !== State.lastDealHash) {
                     State.deals = deals;
                     State.lastDealHash = newHash;
-                    renderDeals();
+                    renderDeals(State.deals);
                     console.log('[Polling] Deals updated');
                 }
             })
@@ -267,7 +256,7 @@
                 console.error('Deals fetch error', e);
                 State.deals = [];
                 State.lastDealHash = null;
-                renderDeals();
+                renderDeals(State.deals);
             });
     }
 
@@ -712,17 +701,17 @@
 
         try {
             var res = await fetch(url);
-            var result = await res.json();
+            var response = await res.json();
 
-            if (!result.success) {
-                console.error('Failed to fetch deals', result.error);
+            if (!response.success) {
+                console.error('Failed to fetch deals', response.error);
                 State.deals = [];
                 renderDeals([]);
                 return;
             }
 
-            var deals = safeArray(result.data);
-            renderDeals(deals);
+            State.deals = safeArray(response.data);
+            renderDeals(response.data);
         } catch (e) {
             console.log('Error loading deals:', e);
             State.deals = [];
@@ -730,62 +719,79 @@
         }
     }
 
-    // Render deals with timeline and state machine info
-    function renderDeals(dealsInput) {
-        var container = document.getElementById('dealList');
-        if (dealsInput !== undefined) {
-            State.deals = safeArray(dealsInput);
-        }
-        var deals = safeArray(State.deals);
+    function renderDeals(deals) {
+      const container = document.getElementById("dealsContainer");
+      container.innerHTML = "";
 
-        if (State.dealFilter !== 'all') {
-            deals = deals.filter(function (d) {
-                return d.type === State.dealFilter || (State.dealFilter === 'placement' && d.type === 'placement');
+      if (!deals || deals.length === 0) {
+        container.innerHTML = "<p>No deals found</p>";
+        return;
+      }
+
+      deals.forEach(deal => {
+
+        const card = document.createElement("div");
+        card.className = "deal-card";
+
+        const statusLabel = deal.label || deal.status || "pending";
+
+        let buttonsHTML = "";
+
+        if (Array.isArray(deal.allowed_actions) && deal.allowed_actions.length > 0) {
+          deal.allowed_actions.forEach(action => {
+
+            const label = action
+              .split("_")
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(" ");
+
+            buttonsHTML += `
+          <button 
+            class="deal-action-btn"
+            data-id="${deal.id}"
+            data-action="${action}">
+            ${label}
+          </button>
+        `;
+          });
+        }
+
+        card.innerHTML = `
+      <h3>Deal #${deal.id}</h3>
+      <p><strong>Amount:</strong> ${deal.amount || ""} TON</p>
+      <p><strong>Status:</strong> ${statusLabel}</p>
+      <div class="deal-buttons">
+        ${buttonsHTML}
+      </div>
+    `;
+
+        container.appendChild(card);
+      });
+
+      attachDealActionHandlers();
+    }
+
+    function attachDealActionHandlers() {
+      document.querySelectorAll(".deal-action-btn").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+
+          const dealId = e.target.dataset.id;
+          const action = e.target.dataset.action;
+
+          try {
+            await apiPost("/api/deal/action", {
+              deal_id: dealId,
+              action: action
             });
-        }
 
-        if (!deals.length) {
-            container.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No deals found</div></div>';
-            return;
-        }
+            await loadDeals();
 
-        var html = '';
-        deals.forEach(function (d) {
-            var deal = safeObj(d);
-            var step = toNumber(deal.step, 1);
-            var status = toText(deal.status, 'pending');
-            var label = toText(deal.label, status);
-            var isTerminal = !!deal.is_terminal;
-
-            // Build timeline
-            var timeline = '';
-            for (var i = 1; i <= 6; i++) {
-                var cls = i < step ? 'done' : (i === step ? 'current' : '');
-                if (isTerminal && step === 0) cls = 'terminal';
-                timeline += '<div class="timeline-step ' + cls + '"></div>';
-            }
-            html += '<div class="deal-card' + (isTerminal ? ' terminal' : '') + '" data-id="' + esc(toText(deal.id, '')) + '">' +
-                '<div class="deal-timeline">' + timeline + '</div>' +
-                '<div class="deal-header">' +
-                '<div class="deal-title">' + esc(toText(deal.title, 'Deal #' + toText(deal.id, ''))) + '</div>' +
-                '<span class="badge badge-' + status + '">' + esc(label) + '</span>' +
-                '</div>' +
-                (deal.media_url ? (deal.media_type === 'photo' ? '<img src="' + esc(deal.media_url) + '" class="deal-media">' : (deal.media_type === 'video' ? '<video controls src="' + esc(deal.media_url) + '" class="deal-media"></video>' : '')) : '') +
-                '<div class="deal-meta">' +
-                '<span class="deal-channel">' + esc(toText(deal.channel, '')) + '</span>' +
-                '<span class="deal-amount">' + esc(toText(deal.amount || deal.escrow_amount || 0)) + ' TON</span>' +
-                '</div>' +
-                '<div class="deal-actions">';
-
-            if (Array.isArray(deal.allowed_actions)) {
-                deal.allowed_actions.forEach(function (action) {
-                    html += '\n            <button class="deal-action-btn"\n                data-id="' + esc(toText(deal.id, '')) + '"\n                data-action="' + esc(toText(action, '')) + '">\n                ' + esc(toText(action, '')) + '\n            </button>\n        ';
-                });
-            }
-
-            html += '</div></div>';
+          } catch (err) {
+            alert("Action failed");
+            console.error(err);
+          }
         });
-        container.innerHTML = html;
+      });
     }
 
 
