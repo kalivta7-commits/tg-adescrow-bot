@@ -363,11 +363,10 @@
         var html = '';
         channels.forEach(function (ch, index) {
             var channel = safeObj(ch);
-            var telegramChannelId = toNumber(channel.telegram_channel_id, NaN);
-            if (Number.isNaN(telegramChannelId)) {
+            var channelId = toText(channel.id, '').trim();
+            if (!channelId) {
                 return;
             }
-            var channelId = Number(telegramChannelId);
             var channelName = toText(channel.name || channel.username || 'Unknown channel');
             var channelUser = toText(channel.username || '');
             var channelCategory = capitalize(toText(channel.category || 'general'));
@@ -401,9 +400,8 @@
         // Bind channel selection
         container.querySelectorAll('.channel-card').forEach(function (card) {
             card.addEventListener('click', function () {
-                var rawId = this.dataset ? this.dataset.id : null;
-                var id = Number(rawId);
-                if (!Number.isFinite(id)) {
+                var id = this.dataset ? toText(this.dataset.id, '').trim() : '';
+                if (!id) {
                     return;
                 }
                 var idx = State.selected.indexOf(id);
@@ -529,19 +527,19 @@
             State.campaign = createdCampaign;
 
             var selected = safeArray(State.selected).map(function (channelId) {
-                return Number(channelId);
+                return toText(channelId, '').trim();
             }).filter(function (channelId) {
-                return Number.isFinite(channelId) && channelId !== 0;
+                return !!channelId;
             });
 
             var dealPromises = selected.map(function (channelId) {
-                if (!channelId || Number.isNaN(channelId)) {
+                if (!channelId) {
                     throw new Error('Invalid channel_id selected: ' + channelId);
                 }
 
                 var channel = safeArray(State.channels).find(function (c) {
                     var item = safeObj(c);
-                    return toNumber(item.telegram_channel_id, NaN) == channelId;
+                    return toText(item.id, '').trim() === channelId;
                 });
 
                 var amount = toNumber(channel && channel.price, 0);
@@ -550,7 +548,7 @@
                 }
 
                 var selectedCampaign = { id: createdCampaign.id };
-                var selectedChannel = { id: Number(channelId) };
+                var selectedChannel = { id: channelId };
                 return submitDeal(selectedCampaign, selectedChannel, amount);
             });
 
@@ -570,7 +568,7 @@
         var total = 0;
         State.selected.forEach(function (id) {
             var ch = State.channels.find(function (c) {
-                return toNumber(safeObj(c).telegram_channel_id, NaN) == id;
+                return toText(safeObj(c).id, '').trim() === id;
             });
             if (ch) total += ch.price;
         });
