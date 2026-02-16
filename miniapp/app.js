@@ -1,5 +1,11 @@
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
 (function () {
     'use strict';
+
+    const SUPABASE_URL = 'https://ljplgcuzvsylgrwkwmoq.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_QzCFORKqw8d5Y2w6MA4KRw_AFJb4kYx';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     window.addEventListener('error', function (event) {
         console.error('[GlobalError]', event && event.error ? event.error : event);
