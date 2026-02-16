@@ -408,12 +408,13 @@
                 }
                 var idx = State.selected.indexOf(id);
                 if (idx === -1) {
-                    State.selected.push(Number(id));
+                    State.selected.push(id);
                     this.classList.add('selected');
                 } else {
                     State.selected.splice(idx, 1);
                     this.classList.remove('selected');
                 }
+                console.log('Selected channels:', State.selected);
                 updateProceedButton();
             });
         });
