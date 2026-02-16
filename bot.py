@@ -792,37 +792,65 @@ def transition_deal_state(deal_id: str, new_status: str, actor_telegram_id: int 
         return {"success": False, "error": str(e)}
 
 
-async def send_deal_notification(bot, deal_id: int, event_type: str, extra_data: dict = None):
-    """
-    Send notification for a deal event.
-    """
-    if not NOTIFICATIONS_AVAILABLE:
-        logger.debug("Notifications module not available, skipping notification")
-        return
-
+async def send_deal_notification(recipient_id, deal_id: int, amount_or_event=None, is_seller: bool = False):
+    """Send a deal notification to a recipient and include seller action buttons when relevant."""
     try:
-        deal_data = notifications.get_deal_data_for_notification(deal_id)
-        if not deal_data:
-            logger.warning(f"Could not get deal data for notification: deal_id={deal_id}")
+        # Backward compatibility with existing call sites that pass a bot instance first.
+        if hasattr(recipient_id, "send_message"):
+            bot = recipient_id
+            event_type = amount_or_event
+
+            if not NOTIFICATIONS_AVAILABLE:
+                logger.debug("Notifications module not available, skipping notification")
+                return
+
+            deal_data = notifications.get_deal_data_for_notification(deal_id)
+            if not deal_data:
+                logger.warning(f"Could not get deal data for notification: deal_id={deal_id}")
+                return
+
+            result = await notifications.notify_deal_participants(
+                bot=bot,
+                event_type=event_type,
+                data=deal_data,
+                advertiser_telegram_id=deal_data.get('advertiser_telegram_id'),
+                channel_owner_telegram_id=deal_data.get('channel_owner_telegram_id')
+            )
+
+            if result.get('notifications_sent', 0) > 0:
+                logger.info(f"Sent {result['notifications_sent']} notification(s) for deal {deal_id} ({event_type})")
+
+            for err in result.get('errors', []):
+                logger.warning(f"Notification error: {err}")
+
             return
 
-        if extra_data:
-            deal_data.update(extra_data)
+        if not bot_instance or not bot_instance.application:
+            logger.warning("Bot instance unavailable; cannot send deal notification")
+            return
 
-        result = await notifications.notify_deal_participants(
-            bot=bot,
-            event_type=event_type,
-            data=deal_data,
-            advertiser_telegram_id=deal_data.get('advertiser_telegram_id'),
-            channel_owner_telegram_id=deal_data.get('channel_owner_telegram_id')
+        bot = bot_instance.application.bot
+        amount = amount_or_event
+
+        if is_seller:
+            message_text = f"📩 New deal request #{deal_id} for {amount} TON."
+            keyboard = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton("✅ Accept", callback_data=f"deal:{deal_id}:accept"),
+                        InlineKeyboardButton("❌ Reject", callback_data=f"deal:{deal_id}:reject"),
+                    ]
+                ]
+            )
+        else:
+            message_text = f"✅ Deal #{deal_id} created for {amount} TON and sent to seller."
+            keyboard = None
+
+        await bot.send_message(
+            chat_id=recipient_id,
+            text=message_text,
+            reply_markup=keyboard
         )
-
-        if result['notifications_sent'] > 0:
-            logger.info(f"Sent {result['notifications_sent']} notification(s) for deal {deal_id} ({event_type})")
-
-        if result['errors']:
-            for err in result['errors']:
-                logger.warning(f"Notification error: {err}")
 
     except Exception as e:
         logger.error(f"Error sending deal notification: {e}")
