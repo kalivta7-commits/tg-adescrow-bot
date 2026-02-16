@@ -867,21 +867,17 @@
     }
 
     // API helper - POST
-    function apiPost(url, data) {
+    async function apiPost(url, body) {
+        const { data: { session } } = await supabase.auth.getSession();
         return fetch(API_BASE + url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        }).then(function (r) {
-            return r.json().catch(function () {
-                return {};
-            }).then(function (body) {
-                if (!r.ok) {
-                    var details = body && (body.error || body.message);
-                    throw new Error(details || ('HTTP ' + r.status));
-                }
-                return body;
-            });
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify(body)
+        }).then(function (res) {
+            return res.json();
         });
     }
 
