@@ -18,6 +18,7 @@ from werkzeug.utils import secure_filename
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     Application,
+    CallbackContext,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
@@ -264,6 +265,56 @@ def remove_channel_admin(channel_id: int, user_id: int) -> bool:
     except Exception as e:
         logger.error(f"Error removing channel admin: {e}")
         return False
+
+
+async def handle_deal_button(update: Update, context: CallbackContext):
+    query = update.callback_query
+    data = query.data  # format: deal:<id>:<action>
+
+    _, deal_id, action = data.split(":")
+
+    if action == "accept":
+        new_status = "accepted"
+    elif action == "reject":
+        new_status = "rejected"
+    else:
+        return
+
+    # fetch deal
+    deal_res = supabase.table("deals") \
+        .select("id, status, channel_id") \
+        .eq("id", deal_id) \
+        .single() \
+        .execute()
+
+    if not deal_res.data:
+        await query.answer("Deal not found", show_alert=True)
+        return
+
+    deal = deal_res.data
+
+    if deal["status"] != "pending":
+        await query.answer("Deal already processed", show_alert=True)
+        return
+
+    # verify seller
+    seller_res = supabase.table("channels") \
+        .select("owner_id") \
+        .eq("id", deal["channel_id"]) \
+        .single() \
+        .execute()
+
+    if not seller_res.data or seller_res.data.get("owner_id") != query.from_user.id:
+        await query.answer("Not authorized", show_alert=True)
+        return
+
+    supabase.table("deals") \
+        .update({"status": new_status}) \
+        .eq("id", deal_id) \
+        .execute()
+
+    await query.answer()
+    await query.edit_message_text(f"Deal {action.capitalize()}ed!")
 
 
 def get_channel_admins(channel_id: int) -> List[dict]:
@@ -1084,6 +1135,9 @@ class AdEscrowBot:
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("menu", self.menu_command))
+        self.application.add_handler(
+            CallbackQueryHandler(handle_deal_button, pattern=r"^deal:")
+        )
         self.application.add_handler(CallbackQueryHandler(self.handle_button_callback))
         self.application.add_handler(
             MessageHandler(filters.StatusUpdate.WEB_APP_DATA, self.handle_webapp_data)
