@@ -182,24 +182,14 @@
             });
         });
         document.getElementById('btnRefresh').addEventListener('click', loadDeals);
-        document.addEventListener('click', function(e) {
+        document.addEventListener('click', function (e) {
             if (e.target.classList.contains('deal-action-btn')) {
-
-                var dealId = e.target.getAttribute('data-id');
-                var action = e.target.getAttribute('data-action');
+                var dealId = e.target.dataset.id;
+                var action = e.target.dataset.action;
 
                 apiPost('/api/deal/action', {
                     deal_id: dealId,
-                    action: action,
-                    user_id: State.user.id
-                }).then(function(res) {
-                    if (res.success) {
-                        loadDeals();
-                    } else {
-                        alert(res.error || 'Action failed');
-                    }
-                }).catch(function(err) {
-                    alert((err && err.message) || 'Action failed');
+                    action: action
                 });
             }
         });
@@ -731,7 +721,7 @@
     // Render deals with timeline and state machine info
     function renderDeals() {
         var container = document.getElementById('dealList');
-        var deals = State.deals;
+        var deals = safeArray(State.deals);
 
         if (State.dealFilter !== 'all') {
             deals = deals.filter(function (d) {
@@ -746,11 +736,11 @@
 
         var html = '';
         deals.forEach(function (d) {
-            var step = d.step || 1;
-            var status = d.status || 'pending';
-            var label = d.label || status;
-            var isTerminal = d.is_terminal || false;
-            var allowedTransitions = d.allowed_transitions || [];
+            var deal = safeObj(d);
+            var step = toNumber(deal.step, 1);
+            var status = toText(deal.status, 'pending');
+            var label = toText(deal.label, status);
+            var isTerminal = !!deal.is_terminal;
 
             // Build timeline
             var timeline = '';
@@ -759,33 +749,26 @@
                 if (isTerminal && step === 0) cls = 'terminal';
                 timeline += '<div class="timeline-step ' + cls + '"></div>';
             }
-            // Build action buttons from backend-provided allowed transitions
-            var actions = '';
-            if (d.allowed_transitions && d.allowed_transitions.length > 0) {
-                actions = '<div class="deal-actions">';
-                d.allowed_transitions.forEach(function(action) {
-                    actions += '<button class="deal-action-btn" ';
-                    actions += 'data-id="' + d.id + '" ';
-                    actions += 'data-action="' + action + '">';
-                    actions += action.replace('_',' ').toUpperCase();
-                    actions += '</button>';
-                });
-                actions += '</div>';
-            }
-
-            html += '<div class="deal-card' + (isTerminal ? ' terminal' : '') + '" data-id="' + d.id + '">' +
+            html += '<div class="deal-card' + (isTerminal ? ' terminal' : '') + '" data-id="' + esc(toText(deal.id, '')) + '">' +
                 '<div class="deal-timeline">' + timeline + '</div>' +
                 '<div class="deal-header">' +
-                '<div class="deal-title">' + esc(d.title || 'Deal #' + d.id) + '</div>' +
+                '<div class="deal-title">' + esc(toText(deal.title, 'Deal #' + toText(deal.id, ''))) + '</div>' +
                 '<span class="badge badge-' + status + '">' + esc(label) + '</span>' +
                 '</div>' +
-                (d.media_url ? (d.media_type === 'photo' ? '<img src="' + esc(d.media_url) + '" class="deal-media">' : (d.media_type === 'video' ? '<video controls src="' + esc(d.media_url) + '" class="deal-media"></video>' : '')) : '') +
+                (deal.media_url ? (deal.media_type === 'photo' ? '<img src="' + esc(deal.media_url) + '" class="deal-media">' : (deal.media_type === 'video' ? '<video controls src="' + esc(deal.media_url) + '" class="deal-media"></video>' : '')) : '') +
                 '<div class="deal-meta">' +
-                '<span class="deal-channel">' + esc(d.channel || '') + '</span>' +
-                '<span class="deal-amount">' + (d.amount || d.escrow_amount || 0) + ' TON</span>' +
+                '<span class="deal-channel">' + esc(toText(deal.channel, '')) + '</span>' +
+                '<span class="deal-amount">' + esc(toText(deal.amount || deal.escrow_amount || 0)) + ' TON</span>' +
                 '</div>' +
-                actions +
-                '</div>';
+                '<div class="deal-actions">';
+
+            if (Array.isArray(deal.allowed_actions)) {
+                deal.allowed_actions.forEach(function (action) {
+                    html += '\n            <button class="deal-action-btn"\n                data-id="' + esc(toText(deal.id, '')) + '"\n                data-action="' + esc(toText(action, '')) + '">\n                ' + esc(toText(action, '')) + '\n            </button>\n        ';
+                });
+            }
+
+            html += '</div></div>';
         });
         container.innerHTML = html;
     }
